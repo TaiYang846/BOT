@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>活動抽選機</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+
+:root{
+  --mist:#EFEFF1;
+  --blush:#ECD4D4;
+  --sky:#CCDBE2;
+  --lilac:#C9CBE0;
+  --ink:#4B4459;
+  --ink-soft:#878194;
+  --card:#FFFFFF;
+  --line: rgba(75,68,89,0.12);
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background: var(--mist);
+  color: var(--ink);
+  font-family:'Noto Sans TC','Space Grotesk',sans-serif;
+  min-height:100vh;
+  padding: 32px 20px 60px;
+}
+
+.wrap{max-width:960px;margin:0 auto;}
+
+.header{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  border-bottom: 2px dashed var(--line);
+  padding-bottom:18px;
+  margin-bottom:28px;
+  flex-wrap:wrap;
+  gap:10px;
+}
+.header h1{
+  font-family:'Space Grotesk',sans-serif;
+  font-weight:700;
+  font-size:28px;
+  letter-spacing:0.5px;
+  margin:0;
+  color:var(--ink);
+}
+.header .tag{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;
+  color: #9B7E97;
+  letter-spacing:2px;
+  text-transform:uppercase;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:22px;
+}
+@media (max-width:760px){ .grid{grid-template-columns:1fr;} }
+
+.card{
+  background: var(--card);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:20px 22px;
+  box-shadow: 0 4px 18px rgba(75,68,89,0.06);
+}
+
+.card h2{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:15px;
+  font-weight:700;
+  margin:0 0 4px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:var(--ink);
+}
+.card .sub{
+  font-size:12.5px;
+  color:#8B8394;
+  margin:0 0 14px;
+  line-height:1.6;
+}
+
+textarea{
+  width:100%;
+  min-height:140px;
+  background:var(--mist);
+  border:1px solid var(--line);
+  border-radius:10px;
+  color:var(--ink);
+  font-family:'IBM Plex Mono',monospace;
+  font-size:13px;
+  padding:12px;
+  resize:vertical;
+  line-height:1.6;
+}
+textarea:focus{outline:2px solid var(--lilac); outline-offset:1px;}
+
+.row{display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap;}
+
+.count-pill{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;
+  background:rgba(201,203,224,0.35);
+  color:#5C5570;
+  border:1px solid rgba(201,203,224,0.7);
+  padding:4px 10px;
+  border-radius:100px;
+}
+
+input[type=number]{
+  width:80px;
+  background:var(--mist);
+  border:1px solid var(--line);
+  border-radius:8px;
+  color:var(--ink);
+  font-family:'IBM Plex Mono',monospace;
+  font-size:14px;
+  padding:7px 10px;
+}
+label.opt{
+  font-size:12.5px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  color:#655D71;
+  cursor:pointer;
+}
+input[type=checkbox]{accent-color:#B48CA0;}
+
+button{
+  font-family:'Space Grotesk',sans-serif;
+  font-weight:700;
+  border:none;
+  border-radius:9px;
+  padding:9px 16px;
+  font-size:13px;
+  cursor:pointer;
+  transition:transform .12s ease, opacity .12s ease;
+}
+button:active{transform:scale(0.97);}
+.btn-add{background:#D9A9AC; color:#fff;}
+.btn-ghost{background:transparent; color:var(--ink); border:1px solid var(--line);}
+.btn-clear{background:transparent; color:#B4677A; border:1px solid rgba(180,103,122,0.35); font-size:12px; padding:6px 12px;}
+
+.blacklist-tags{
+  display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; min-height:20px;
+}
+.tag{
+  background:var(--blush);
+  border:1px solid rgba(180,103,122,0.3);
+  color:#8A4F58;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;
+  padding:5px 9px 5px 11px;
+  border-radius:100px;
+  display:flex; align-items:center; gap:6px;
+}
+.tag button{
+  background:none; border:none; color:#8A4F58; font-size:13px; padding:0 2px;
+  line-height:1; cursor:pointer; font-weight:400;
+}
+
+.draw-panel{
+  margin-top:22px;
+  background: var(--card);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:26px;
+  text-align:center;
+  position:relative;
+  box-shadow: 0 4px 18px rgba(75,68,89,0.06);
+}
+.draw-panel .pool-info{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;
+  color:#8B8394;
+  margin-bottom:16px;
+}
+.pool-info b{color:#5C8A82;}
+.pool-info .excl{color:#B4677A;}
+
+.big-draw{
+  background: linear-gradient(135deg, var(--lilac), var(--sky));
+  color: #453F52;
+  font-size:16px;
+  padding:14px 34px;
+  border-radius:100px;
+  box-shadow:0 6px 20px rgba(201,203,224,0.55);
+}
+.big-draw:disabled{opacity:0.35; cursor:not-allowed; box-shadow:none;}
+
+.reel{
+  margin-top:20px;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:22px;
+  color:#9B7E97;
+  min-height:30px;
+  letter-spacing:1px;
+}
+
+.results{
+  margin-top:22px;
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(150px,1fr));
+  gap:14px;
+}
+.stub{
+  background:var(--mist);
+  color:var(--ink);
+  border-radius:10px;
+  padding:14px 12px 12px;
+  position:relative;
+  font-family:'IBM Plex Mono',monospace;
+  text-align:left;
+  animation: pop .35s ease;
+  border:1px dashed rgba(75,68,89,0.2);
+}
+@keyframes pop{
+  from{ transform: scale(0.85); opacity:0; }
+  to{ transform: scale(1); opacity:1; }
+}
+.stub .no{
+  font-size:10px; color:#B4677A; letter-spacing:2px; font-weight:600;
+}
+.stub .name{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:17px;
+  font-weight:700;
+  margin-top:4px;
+  word-break:break-word;
+}
+
+.history{
+  margin-top:10px;
+  font-size:12px;
+  color:#9A93A3;
+}
+
+.empty{
+  color:#B0AAB8;
+  font-size:12.5px;
+}
+
+::selection{ background: var(--lilac); color:#3A3446; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <h1>🎟️ 活動抽選機</h1>
+    <div class="tag">Random Draw</div>
+  </div>
+
+  <div class="grid">
+    <div class="card" style="border:1px solid rgba(201,203,224,0.6); background:linear-gradient(180deg,#fff, #F7F5FA);">
+      <h2>🎯 保底名單
+        <span style="font-size:10.5px; font-weight:500; color:#5C8A82; padding:2px 8px; border-radius:100px; letter-spacing:1px;"></span>
+      </h2>
+      <p class="sub">這份名單會直接顯示在畫面上，抽選時會優先讓他們中獎（仍會排除黑名單），剩餘名額才隨機抽出。</p>
+      <textarea id="guaranteedInput" style="min-height:60px;" placeholder="輸入一定要中獎的姓名，一行一位"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>🚫 黑名單</h2>
+      <p class="sub">加入的人會被永久記住，之後每次抽選都會自動排除。</p>
+      <div class="row">
+        <textarea id="blacklistInput" style="min-height:44px;" placeholder="輸入姓名，按 Enter 或「加入」新增"></textarea>
+        <button class="btn-add" id="addBlacklist">加入黑名單</button>
+      </div>
+      <div class="blacklist-tags" id="blacklistTags">
+        <span class="empty">目前沒有黑名單成員</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:22px;">
+    <h2>報名名單</h2>
+    <p class="sub">每行一位，可只寫姓名，或「姓名,編號」。</p>
+    <textarea id="poolInput" placeholder="王小明&#10;陳美麗,A102&#10;李大同"></textarea>
+    <div class="row">
+      <span class="count-pill" id="poolCount">0 人</span>
+    </div>
+  </div>
+
+  <div class="draw-panel">
+    <div class="pool-info" id="poolInfo">請先貼上報名名單</div>
+    <div class="row" style="justify-content:center; margin-bottom:6px;">
+      <label class="opt">抽出人數 <input type="number" id="winCount" value="1" min="1"></label>
+      <label class="opt"><input type="checkbox" id="noRepeat" checked> 得獎者不重複抽中</label>
+    </div>
+    <div class="row" style="justify-content:center; margin-top:16px;">
+      <button class="big-draw" id="drawBtn">🎲 開始抽選</button>
+
+      <button class="btn-ghost" id="resetBtn">重設本輪結果</button>
+    </div>
+    <div class="reel" id="reel"></div>
+    <div class="results" id="results"></div>
+  </div>
+
+  <p class="history" id="storageStatus">正在載入黑名單資料…</p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const poolInput = $('poolInput');
+const blacklistInput = $('blacklistInput');
+const blacklistTags = $('blacklistTags');
+const poolCount = $('poolCount');
+const poolInfo = $('poolInfo');
+const drawBtn = $('drawBtn');
+const resetBtn = $('resetBtn');
+const reel = $('reel');
+const results = $('results');
+const storageStatus = $('storageStatus');
+
+let blacklist = [];        // array of names
+let alreadyWon = new Set(); // names already drawn this session (for no-repeat)
+
+function parseNames(raw){
+  return raw.split('\n')
+    .map(l => l.trim())
+    .filter(Boolean)
+    .map(l => {
+      const parts = l.split(',');
+      return { name: parts[0].trim(), id: (parts[1]||'').trim() };
+    });
+}
+
+function normalize(name){ return name.trim(); }
+
+async function loadBlacklist(){
+  const STORAGE_KEY = 'draw-tool-blacklist-v1';
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    blacklist = raw ? JSON.parse(raw) : [];
+    storageStatus.textContent = '黑名單資料已載入，僅儲存在這台電腦的這個瀏覽器裡（清除瀏覽器資料或換電腦會重新開始）。';
+  }catch(e){
+    blacklist = [];
+    storageStatus.textContent = '⚠️ 這個瀏覽器不支援本機儲存（例如無痕視窗），黑名單這次可能無法記住。';
+  }
+  renderBlacklist();
+}
+
+function saveBlacklist(){
+  try{
+    localStorage.setItem('draw-tool-blacklist-v1', JSON.stringify(blacklist));
+  }catch(e){
+    storageStatus.textContent = '⚠️ 儲存黑名單時發生問題，這次修改可能不會保留。';
+  }
+}
+
+function renderBlacklist(){
+  blacklistTags.innerHTML = '';
+  if(blacklist.length === 0){
+    blacklistTags.innerHTML = '<span class="empty">目前沒有黑名單成員</span>';
+    return;
+  }
+  blacklist.forEach(name => {
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.innerHTML = `${escapeHtml(name)} <button title="移除">✕</button>`;
+    tag.querySelector('button').onclick = async () => {
+      blacklist = blacklist.filter(n => n !== name);
+      await saveBlacklist();
+      renderBlacklist();
+      updatePoolInfo();
+    };
+    blacklistTags.appendChild(tag);
+  });
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+$('addBlacklist').onclick = addBlacklistFromInput;
+blacklistInput.addEventListener('keydown', e => {
+  if(e.key === 'Enter' && !e.shiftKey){
+    e.preventDefault();
+    addBlacklistFromInput();
+  }
+});
+
+async function addBlacklistFromInput(){
+  const names = blacklistInput.value.split('\n').map(n=>n.trim()).filter(Boolean);
+  if(names.length === 0) return;
+  names.forEach(n => { if(!blacklist.includes(n)) blacklist.push(n); });
+  blacklistInput.value = '';
+  await saveBlacklist();
+  renderBlacklist();
+  updatePoolInfo();
+}
+
+function getEligiblePool(){
+  const all = parseNames(poolInput.value);
+  const seen = new Set();
+  const deduped = [];
+  all.forEach(p => {
+    const key = p.name;
+    if(!seen.has(key)){ seen.add(key); deduped.push(p); }
+  });
+  return deduped.filter(p => !blacklist.includes(p.name) && !(document.getElementById('noRepeat').checked && alreadyWon.has(p.name)));
+}
+
+function getGuaranteedNames(pool){
+  const raw = [...new Set(parseNames($('guaranteedInput').value).map(p => p.name))];
+  return raw.filter(name => pool.some(p => p.name === name));
+}
+
+function updatePoolInfo(){
+  const all = parseNames(poolInput.value);
+  const total = all.length;
+  poolCount.textContent = `${total} 人`;
+  const eligible = getEligiblePool();
+  const excluded = total - eligible.length;
+  if(total === 0){
+    poolInfo.innerHTML = '請先貼上報名名單';
+  } else {
+    poolInfo.innerHTML = `可抽選 <b>${eligible.length}</b> 人（總報名 ${total} 人）`;
+  }
+  drawBtn.disabled = eligible.length === 0;
+}
+
+poolInput.addEventListener('input', updatePoolInfo);
+document.getElementById('noRepeat').addEventListener('change', updatePoolInfo);
+document.getElementById('guaranteedInput').addEventListener('input', updatePoolInfo);
+
+drawBtn.onclick = () => {
+  let n = Math.max(1, parseInt($('winCount').value) || 1);
+  const pool = getEligiblePool();
+  if(pool.length === 0){
+    reel.textContent = '沒有可抽選的名單成員了。';
+    return;
+  }
+
+  const guaranteedNames = getGuaranteedNames(pool);
+  const guaranteedWinners = pool.filter(p => guaranteedNames.includes(p.name));
+  if(guaranteedWinners.length > n){
+    n = guaranteedWinners.length;
+    $('winCount').value = n;
+  }
+  const remainingPool = pool.filter(p => !guaranteedNames.includes(p.name));
+  const randomCount = n - guaranteedWinners.length;
+
+  const randomWinners = [];
+  const copy = [...remainingPool];
+  for(let i=0; i<Math.min(randomCount, copy.length); i++){
+    const idx = Math.floor(Math.random() * copy.length);
+    randomWinners.push(copy.splice(idx,1)[0]);
+  }
+
+  drawBtn.disabled = true;
+  let ticks = 0;
+  const spinNames = (remainingPool.length ? remainingPool : pool).map(p=>p.name);
+  const timer = setInterval(() => {
+    reel.textContent = '🎲 ' + spinNames[Math.floor(Math.random()*spinNames.length)];
+    ticks++;
+    if(ticks > 14){
+      clearInterval(timer);
+      const allWinners = [
+        ...guaranteedWinners.map(w => ({...w, guaranteed:true})),
+        ...randomWinners.map(w => ({...w, guaranteed:false}))
+      ];
+      reel.textContent = `✅ 抽出 ${allWinners.length} 位！`;
+      const swatchColors = ['#ECD4D4', '#CCDBE2', '#C9CBE0', '#EFEFF1'];
+      allWinners.forEach((w, i) => {
+        alreadyWon.add(w.name);
+        const stub = document.createElement('div');
+        stub.className = 'stub';
+        stub.style.background = swatchColors[(results.children.length + i) % swatchColors.length];
+        if(w.guaranteed){ stub.style.border = '1px solid #B4A3C4'; }
+        stub.innerHTML = `<div class="no">TICKET</div><div class="name">${escapeHtml(w.name)}</div>${w.id ? `<div style="font-size:11px;opacity:.6;margin-top:2px;">${escapeHtml(w.id)}</div>` : ''}`;
+        results.prepend(stub);
+      });
+      updatePoolInfo();
+    }
+  }, 55);
+};
+
+resetBtn.onclick = () => {
+  results.innerHTML = '';
+  reel.textContent = '';
+  alreadyWon.clear();
+  updatePoolInfo();
+};
+
+loadBlacklist();
+updatePoolInfo();
+</script>
+</body>
+</html>
