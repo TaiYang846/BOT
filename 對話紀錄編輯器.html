@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>對話紀錄編輯器</title>
+<style>
+:root{--bg:#17181c;--panel:#212227;--line:#33353c;--tx:#e8e9ec;--mute:#8b8f9a;--acc:#5865f2;--acc2:#6d79f5}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--tx);font:14px/1.4 system-ui,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif}
+.bar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.bar h1{font-size:15px;margin:0 8px 0 0;font-weight:700;letter-spacing:.02em}
+.sep{width:1px;height:22px;background:var(--line)}
+.grp{display:flex;gap:4px;align-items:center}
+select{font:inherit;color:var(--tx);background:#2b2d34;border:1px solid var(--line);border-radius:6px;padding:5px 6px}
+button{font:inherit;color:var(--tx);background:#2b2d34;border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer}
+button:hover:not(:disabled){background:#363942}
+button:disabled{opacity:.4;cursor:default}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+button.pri:hover:not(:disabled){background:var(--acc2)}
+.seg button{border-radius:0;margin:0}
+.seg button:first-child{border-radius:6px 0 0 6px}
+.seg button:last-child{border-radius:0 6px 6px 0;border-left:0}
+.seg button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.sp{flex:1}
+#status{color:var(--mute);font-size:12px}
+.stage{flex:1;position:relative;min-height:0}
+#frame{width:100%;height:100%;border:0;display:none;background:#000}
+#empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px}
+#empty .box{border:2px dashed #3d4049;border-radius:14px;padding:44px 56px;max-width:480px}
+#empty.over .box{border-color:var(--acc);background:rgba(88,101,242,.08)}
+#empty h2{margin:0 0 6px;font-size:18px}
+#empty p{margin:4px 0;color:var(--mute)}
+.stage{display:flex}
+.view{flex:1;position:relative;min-width:0}
+#tocPanel{width:310px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--line);display:none;flex-direction:column;min-height:0}
+#tocPanel.open{display:flex}
+#tocPanel header{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+#tocPanel h3{margin:0;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+#tocPanel .mini{display:flex;gap:6px;flex-wrap:wrap}
+#tocPanel .mini button{font-size:12px;padding:3px 8px}
+#tocList{flex:1;overflow:auto;padding:8px}
+.titem{display:flex;align-items:center;gap:4px;margin-bottom:6px}
+.titem .n{width:22px;text-align:right;color:var(--mute);font-size:12px;flex-shrink:0}
+.titem input{flex:1;min-width:0;background:#17181c;border:1px solid var(--line);border-radius:5px;color:var(--tx);padding:5px 7px;font:inherit}
+.titem input:focus{outline:2px solid var(--acc);border-color:transparent}
+.titem button{padding:3px 7px;font-size:12px}
+.tempty{color:var(--mute);font-size:12.5px;padding:6px 4px;line-height:1.6}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+.ov.open{display:flex}
+.dlg{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;width:min(400px,92vw);display:flex;flex-direction:column;gap:14px}
+.dlg h3{margin:0;font-size:16px}
+.dlg .opt{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dlg label.chk{display:flex;gap:8px;align-items:center;cursor:pointer}
+.dlg label.chk.dis{opacity:.45;cursor:default}
+.dlg .acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.dlg p{margin:0;color:var(--mute);font-size:13px}
+.implist{max-height:210px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.improw{padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px}
+.improw:last-child{border-bottom:0}
+.improw small{display:block;color:var(--mute);font-size:12px}
+.improw.bad{color:#f0777a}
+.avprev{width:64px;height:64px;border-radius:50%;object-fit:cover;align-self:center}
+.fbar{padding:6px 14px;background:#1c1d21}
+.flabel{color:var(--mute);font-size:12px}
+.syn{margin-left:5px;color:var(--mute);font:11px ui-monospace,Consolas,monospace}
+.fbar button{padding:4px 9px}
+.tip{font-size:12px;color:var(--mute);padding:5px 14px;background:#1c1d21;border-bottom:1px solid var(--line);display:none}
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>對話紀錄編輯器</h1>
+  <div class="grp">
+    <button id="btnOpen" title="可一次選多個檔案，會合併成一份">開啟檔案</button>
+    <button id="btnAdd" disabled title="把其他 HTML 加進目前這份">＋加入檔案</button>
+    <button id="btnAddMsg" disabled title="在目前選到的那則後面新增一則對話（沒選就加在最後）">＋新增對話</button>
+    <button id="btnAddDiv" disabled title="新增一條可以打字的分隔線，例如「case1 - 『悟君』」">＋文字分隔線</button>
+    <button id="btnSort" disabled title="依每則的時間重新排序，並重建日期分隔線">↕ 依時間排序</button>
+    <select id="cutoff" title="日期分隔線幾點換日：凌晨的訊息會算在前一天底下（你的原檔就是這樣分的）">
+      <option value="0">換日 00:00</option><option value="3">換日 03:00</option><option value="4">換日 04:00</option>
+      <option value="5" selected>換日 05:00</option><option value="6">換日 06:00</option><option value="8">換日 08:00</option>
+    </select>
+  </div>
+  <div class="grp" id="selInfo" style="display:none">
+    <span style="color:#9fb0ff;font-size:13px">已選 <b id="selN">0</b> 則（可一起拖曳）</span>
+    <button id="selClear">取消選取</button><button id="selDel">刪除所選</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp seg" title="只影響編輯時的檢視；匯出時可另外選底色">
+    <button id="thDark" class="on">黑底</button><button id="thLight">白底</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button id="btnUndo" title="復原上一個移動／刪除／複製" disabled>↶ 復原</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp seg">
+    <button id="mEdit" class="on">編輯</button><button id="mView">預覽</button>
+  </div>
+  <div class="grp"><button id="btnToc">☰ 目錄 (0)</button></div>
+  <div class="sp"></div>
+  <span id="status">尚未載入檔案</span>
+  <button id="btnExport" class="pri" disabled>匯出 HTML</button>
+  <input type="file" id="file" accept=".html,.htm,text/html" multiple hidden>
+  <input type="file" id="fileAdd" accept=".html,.htm,text/html" multiple hidden>
+</div>
+<div class="bar fbar" id="fbar">
+  <span class="flabel">Discord 格式</span>
+  <div class="grp">
+    <button id="btnB" title="粗體 **文字**（Ctrl+B）"><b>B</b></button>
+    <button id="btnI" title="斜體 *文字*（Ctrl+I）"><i>I</i></button>
+    <button data-f="u" title="底線 __文字__（先選取文字）"><u>U</u><small class="syn">__</small></button>
+    <button data-f="s" title="刪除線 ~~文字~~（先選取文字）"><s>S</s><small class="syn">~~</small></button>
+    <button data-f="spoiler" title="劇透 ||文字||（先選取文字；匯出後點一下才會顯示）">劇透<small class="syn">||</small></button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button data-f="h1" title="大標題：把這一行變成 # 大標題（再按一次取消）"><b>大標題</b><small class="syn">#</small></button>
+    <button data-f="h2" title="中標題：## "><b>中標題</b><small class="syn">##</small></button>
+    <button data-f="h3" title="小標題：### "><b>小標題</b><small class="syn">###</small></button>
+    <button data-f="sub" title="副標：-# （小字灰色）">副標<small class="syn">-#</small></button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button data-f="qt" title="引用這一行：> ">引用一行<small class="syn">&gt;</small></button>
+    <button data-f="qtb" title="引用整段：>>> （選取多行；沒選取就是從這一行到訊息結尾）">引用整段<small class="syn">&gt;&gt;&gt;</small></button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button data-f="code" title="行內程式碼：先選取文字">程式碼<small class="syn">`</small></button>
+    <button data-f="pre" title="程式碼區塊：把選取的行（或這一行）變成區塊">程式碼區塊<small class="syn">```</small></button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button data-f="ul" title="項目清單：- 或 * （選取多行，每行一個項目）">• 清單<small class="syn">-</small></button>
+    <button data-f="ol" title="編號清單：1. 2. 3.（選取多行，每行一個項目）">1. 清單<small class="syn">1.</small></button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button data-f="link" title="連結：[文字](網址)。選取文字後按下，輸入網址；在連結上再按可修改或移除">連結<small class="syn">[ ]( )</small></button>
+    <button data-f="mention" title="@提及：選取名字，或直接輸入名字">@提及</button>
+    <button data-f="ch" title="#頻道提及：選取名字，或直接輸入名字">#頻道</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp"><button data-f="clear" title="清除所在這一行（或選取的幾行）的所有格式">清除格式</button></div>
+  <span class="flabel" style="margin-left:auto">先點進訊息文字 → 按按鈕；再按一次可取消</span>
+</div>
+<div class="tip" id="tip">拖曳左側 ⠿ 移動　·　可一次開啟多個檔案合併　·　點頭像換圖　·　滑鼠移到訊息上有 目錄／複製／刪除　·　點文字直接修改，Enter 換行　·　Ctrl+S 匯出</div>
+<div class="stage">
+ <div class="view">
+  <div id="empty">
+    <div class="box">
+      <h2>把匯出的 HTML 拖進來</h2>
+      <p>或按左上角「開啟檔案」</p>
+      <p>圖片、頭像都會原樣保留在檔案裡</p>
+    </div>
+  </div>
+  <iframe id="frame" title="對話紀錄"></iframe>
+ </div>
+ <aside id="tocPanel">
+  <header>
+    <h3><span>目錄編輯</span><button id="tocClose" style="padding:2px 8px">✕</button></h3>
+    <div class="mini">
+      <button id="tocDates">加入所有日期分隔線</button>
+      <button id="tocClear">清空目錄</button>
+    </div>
+  </header>
+  <div id="tocList"></div>
+ </aside>
+</div>
+
+<input type="file" id="avFile" accept="image/*" hidden>
+
+<div class="ov" id="ovImp"><div class="dlg" style="width:min(540px,94vw)">
+  <h3 id="impTitle">載入檔案</h3>
+  <div id="impList" class="implist"></div>
+  <div id="impMode" style="display:none;flex-direction:column;gap:6px">
+    <label class="chk"><input type="radio" name="impm" value="add" checked> 加入目前這份</label>
+    <label class="chk"><input type="radio" name="impm" value="replace"> 取代目前內容</label>
+  </div>
+  <label class="chk"><input type="checkbox" id="impSort" checked> <span id="impSortTxt">依時間排序，並重新產生日期分隔線</span></label>
+  <label class="chk"><input type="checkbox" id="impDup" checked> 移除重複的訊息（同角色、同時間、同內容）</label>
+  <div class="acts"><button id="impCancel">取消</button><button class="pri" id="impGo">載入</button></div>
+</div></div>
+
+<div class="ov" id="ovExport"><div class="dlg">
+  <h3>匯出設定</h3>
+  <div class="opt"><span>網頁標題</span>
+    <input id="exPageTitle" placeholder="瀏覽器分頁上顯示的標題" style="width:240px;background:#17181c;border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:5px 7px;font:inherit"></div>
+  <div class="opt"><span>預設底色</span>
+    <div class="grp seg"><button id="exDark" class="on">黑底</button><button id="exLight">白底</button></div></div>
+  <label class="chk"><input type="checkbox" id="exViewer" checked> 加上「日間／夜間模式」切換鈕（看的人可自己選）</label>
+  <label class="chk"><input type="checkbox" id="exBot" checked> 保留 BOT 標籤</label>
+  <div id="exChOpts" style="display:flex;flex-direction:column;gap:8px">
+    <label class="chk"><input type="checkbox" id="exCh" checked> 附上頻道切換鈕（讓看的人選擇要看哪個頻道）</label>
+    <div class="opt" id="exChTxt"><span>按鈕／視窗標題文字</span><span class="grp">
+      <input id="exChBtn" style="width:90px;background:#17181c;border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:5px 7px;font:inherit">
+      <input id="exChTitle" style="width:130px;background:#17181c;border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:5px 7px;font:inherit"></span></div>
+  </div>
+  <label class="chk" id="exChanLbl"><input type="checkbox" id="exChan" checked> 保留每則訊息旁的頻道名稱</label>
+  <label class="chk" id="exTocLbl"><input type="checkbox" id="exToc"> 附上目錄（<span id="exTocN">0</span> 個章節）</label>
+  <div class="opt" id="exTocOpts"><span>目錄樣式</span>
+    <span class="grp">
+      <select id="exMarker"><option value="none">無列點</option><option value="dot">圓點 ●</option><option value="dash">短橫線 –</option><option value="num">數字 1 2 3</option></select>
+      <input id="exTocTitle" placeholder="按鈕文字" style="width:90px;background:#17181c;border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:5px 7px;font:inherit">
+    </span></div>
+  <div class="acts"><button id="exCancel">取消</button><button class="pri" id="exGo">匯出</button></div>
+</div></div>
+
+<div class="ov" id="ovAv"><div class="dlg">
+  <h3>更換頭像</h3>
+  <img class="avprev" id="avPrev" alt="">
+  <p id="avWho"></p>
+  <div class="acts" style="flex-direction:column;align-items:stretch">
+    <button class="pri" id="avAll"></button>
+    <button id="avOne">只換這一則</button>
+    <button id="avCancel">取消</button>
+  </div>
+</div></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const frame = $('#frame');
+let idoc = null, baseCSS = '', savedScripts = [], fileName = 'chat.html';
+let theme = 'dark', editing = true, dirty = false;
+const undoStack = [];
+let exOpts = { chfab: true, chBtn: '表示切替', chTitle: 'チャット種類一覧', theme: null, bot: true, toc: true, viewer: true, marker: 'none', tocTitle: '目錄', chan: true };
+let pendingAv = null;
+
+const TOPBAR_CSS = pos => pos !== 'topbar' ? '' : `.topbar{position:fixed;top:14px;right:16px;z-index:12;display:flex;gap:8px;align-items:flex-start}
+.topbar .vbar button,.topbar .toc summary{line-height:20px;font-size:13px;box-sizing:content-box}
+`;
+const CDIV_CSS = '\n/*cdiv*/.custom-divider.cd-empty{gap:0}/*endcdiv*/\n';   // 沒打字的文字分隔線：中間不留空隙，變成一條完整的線
+const vbarCss = (pos, off = 16) => `/*vbar*/
+${TOPBAR_CSS(pos)}
+.vbar{${pos === 'topbar' ? '' : 'position:fixed;' + (pos === 'bottom' ? 'bottom:' + off + 'px' : 'top:14px') + ';right:16px;'}z-index:12}
+.vbar button{font:inherit;font-size:13px;cursor:pointer;background:#313338;color:#dbdee1;border:1px solid #3a3c43;border-radius:8px;padding:6px 12px}
+.vbar button:hover{background:#2e3035}
+/*endvbar*/`;
+const CHFAB_CSS = `/*chfab*/
+#ch-fab{position:fixed;bottom:16px;right:16px;z-index:12}
+#ch-btn{font:inherit;font-size:14px;font-weight:700;color:#fff;background:#2563eb;border:0;border-radius:999px;padding:12px 22px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+#ch-btn:hover{background:#1d4fd8}
+#ch-pop{position:fixed;bottom:72px;right:16px;z-index:13;width:min(340px,calc(100vw - 32px));background:#fff;color:#1e293b;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.45);overflow:hidden}
+#ch-pop[hidden]{display:none}
+#ch-pop .ch-hd{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:700;color:#64748b;font-size:14px}
+#ch-pop .ch-x{font:inherit;font-size:20px;line-height:1;color:#64748b;background:none;border:0;cursor:pointer;padding:0 2px}
+#ch-pop .ch-list{padding:14px 18px 18px;max-height:50vh;overflow:auto;display:flex;flex-direction:column;gap:14px}
+#ch-pop label{display:flex;align-items:center;gap:12px;cursor:pointer;font-size:15px;color:#1e293b}
+#ch-pop input{width:20px;height:20px;accent-color:#2563eb;flex-shrink:0;margin:0}
+#filter-empty{text-align:center;color:#949ba4;padding:48px 16px}
+/*endchfab*/`;
+const SPOILER_JS = `document.addEventListener('click',function(e){var s=e.target.closest&&e.target.closest('.spoiler');if(s)s.classList.toggle('revealed')});`;
+const CHANNEL_JS = `(function(){var btn=document.getElementById('ch-btn'),pop=document.getElementById('ch-pop');if(!btn||!pop)return;
+var opts=[].slice.call(pop.querySelectorAll('input[data-channel]')),entries=[].slice.call(document.querySelectorAll('.chat-log [data-channel]')),dates=[].slice.call(document.querySelectorAll('.date-divider[data-date]')),empty=document.getElementById('filter-empty');
+function update(){var sel={},vd={},vis=0;opts.forEach(function(o){if(o.checked)sel[o.getAttribute('data-channel')]=1});
+entries.forEach(function(e){var show=!!sel[e.getAttribute('data-channel')];e.hidden=!show;if(show){vis++;vd[e.getAttribute('data-date')]=1}});
+dates.forEach(function(d){d.hidden=!vd[d.getAttribute('data-date')]});if(empty)empty.hidden=vis!==0;}
+btn.addEventListener('click',function(){pop.hidden=!pop.hidden});
+document.getElementById('ch-x').addEventListener('click',function(){pop.hidden=true});
+document.addEventListener('click',function(e){if(!pop.hidden&&!pop.contains(e.target)&&e.target!==btn)pop.hidden=true});
+opts.forEach(function(o){o.addEventListener('change',update)});update();})();`;
+const VIEWER_JS = `(function(){var l=document.getElementById('theme-light'),b=document.getElementById('theme-btn');if(!l||!b)return;var K='chat-theme:'+document.title;
+function set(x){l.media=x?'all':'not all';b.textContent=x?'🌙 夜間模式':'☀ 日間模式';}
+var v=null;try{v=localStorage.getItem(K)}catch(e){}
+set(v?v==='light':l.media==='all');
+b.onclick=function(){var x=l.media!=='all';set(x);try{localStorage.setItem(K,x?'light':'dark')}catch(e){}};})();`;
+const tocCss = (pos, h, off = 64) => `/*toc*/
+${TOPBAR_CSS(pos)}html{scroll-behavior:smooth}
+[data-toc]{scroll-margin-top:${h}px}
+.toc{${pos === 'topbar' ? 'position:relative;' : 'position:fixed;' + (pos === 'bottom' ? 'bottom:' + off + 'px' : 'top:64px') + ';right:16px;'}z-index:11;font-size:13px;text-align:right}
+.toc summary{list-style:none;cursor:pointer;display:inline-block;background:#2b2d31;color:#f2f3f5;border:1px solid #3a3c43;border-radius:6px;padding:6px 12px;font-weight:600}
+.toc summary::-webkit-details-marker{display:none}
+.toc ul{${pos === 'topbar' ? 'position:absolute;right:0;top:calc(100% + 6px);margin:0;max-height:70vh;' : pos === 'bottom' ? 'position:absolute;right:0;bottom:calc(100% + 6px);max-height:60vh;' : 'margin-top:6px;max-height:70vh;'}background:#2b2d31;border:1px solid #3a3c43;border-radius:8px;padding:8px 12px;list-style:none;overflow:auto;min-width:220px;max-width:min(320px,80vw);text-align:left}
+.toc ul.m-num{list-style:decimal;padding-left:32px}
+.toc ul.m-dot{list-style:disc;padding-left:30px}
+.toc ul.m-dash{list-style:"– ";padding-left:26px}
+.toc li.lv1{margin-left:16px;font-size:.95em}
+.toc li.lv2{margin-left:32px;font-size:.9em}
+.toc li.lv1 a,.toc li.lv2 a{color:#949ba4}
+.toc li{margin:4px 0}
+.toc a{color:#dbdee1;text-decoration:none}
+.toc a:hover,.toc li.lv1 a:hover,.toc li.lv2 a:hover{color:#00a8fc}
+/*endtoc*/`;
+
+/* ---------- 黑白底色對照（單次取代，可雙向還原） ---------- */
+const MAP = {
+  '#313338':'#ffffff', '#2b2d31':'#f2f3f5', '#1e1f22':'#e3e5e8', '#dbdee1':'#313338',
+  '#f2f3f5':'#060607', '#949ba4':'#5c5e66', '#3a3c43':'#d4d7dc', '#2e3035':'#f7f7f8',
+  '#4e505a':'#c4c9ce', '#c9cdd3':'#4e5058', '#6f7680':'#80848e', '#00a8fc':'#006ce7',
+  '#3c4270':'#dee0fc', '#c9cfe8':'#4752c4'
+};
+const INV = Object.fromEntries(Object.entries(MAP).map(([a,b]) => [b,a]));
+const remap = (css, map) => css.replace(/#[0-9a-fA-F]{6}\b/g, m => map[m.toLowerCase()] || m);
+const withTheme = (css, t) => t === 'light' ? remap(css, MAP) : css;
+const themeCSS = t => withTheme(baseCSS, t);
+
+/* ---------- 兩種匯出格式（舊：.wrap／新：.chat-log） ---------- */
+const each = (list, f) => list.split(',').map(f).join(',');
+const FORMATS = {
+  old: { name: 'old', label: '舊版格式', wrap: '.wrap', div: '.div', msg: '.msg', body: '.bd', head: '.row', av: '.av,.av-fb', nm: '.nm', bt: '.bt', ts: '.ts,.systs',
+         hdr: '.hdr', cutoff: 5, pos: 'top',
+         edit: '.nm,.ts,.bt,.div,.hdr h1,.hdr small', single: '.nm,.ts,.bt,.div,.hdr h1,.hdr small' },
+  neu: { name: 'new', label: '新版格式', wrap: '.chat-log', div: '.date-divider', msg: '.message', body: '.message-body', head: '.message-header', av: '.avatar,.avatar-fallback', nm: '.author-name', bt: '.bot-badge',
+         ts: '.message-time,.systs', hdr: '.page-header', cutoff: 0, pos: 'topbar',
+         edit: '.author-name,.message-time,.bot-badge,.date-divider,.page-header h1,.page-header small',
+         single: '.author-name,.message-time,.bot-badge,.date-divider,.page-header h1,.page-header small' }
+};
+const COMMON_E = '.tx,.rp-nm,.rp-tx,.emb-t,.emb-d,.emb-a,.emb-fn,.emb-fv,.emb-f,.poll-q,.poll-a,.poll-meta,.comp-text,.sysmsg,.sticker span,.rx';
+const COMMON_S = '.rp-nm,.rp-tx,.poll-meta';
+let channelLabels = new Map(), lastUnit = null, selAnchor = null, pageTitle = '';
+let F = FORMATS.old, EDITABLE = '', SINGLE = '', avatars = new Map(), origStyleId = '';
+function setFormat(f){
+  F = f; EDITABLE = COMMON_E + ',' + f.edit; SINGLE = COMMON_S + ',' + f.single;
+  $('#cutoff').value = String(f.cutoff);
+}
+setFormat(FORMATS.old);
+
+/* ---------- 編輯器內嵌樣式（匯出時會移除） ---------- */
+const edCss = () => {
+  const W = F.wrap;
+  const A = each(F.av, a => `${W}>${F.msg}>${a}`);
+  const AH = each(F.av, a => `html[data-ed="on"] ${W}>${F.msg}>${a}:hover`);
+  return `
+${W}{padding-left:40px!important}
+${W}>*{position:relative}
+.ed-handle,.ed-tools{user-select:none;-webkit-user-select:none;font:13px/1 system-ui,sans-serif}
+.ed-handle{position:absolute;left:-30px;top:6px;width:24px;height:28px;display:flex;align-items:center;justify-content:center;
+  color:#8b8f9a;cursor:grab;border-radius:5px;opacity:.35;touch-action:none;font-size:16px}
+${W}>*:hover>.ed-handle{opacity:1;background:rgba(128,132,142,.18)}
+.ed-handle:active{cursor:grabbing}
+.ed-tools{position:absolute;right:8px;top:-8px;display:none;gap:2px;background:#1e1f22;border:1px solid #3a3c43;border-radius:6px;padding:2px;z-index:6}
+${W}>*:hover>.ed-tools{display:flex}
+.ed-tools span{color:#dbdee1;padding:5px 8px;border-radius:4px;cursor:pointer;white-space:nowrap}
+.ed-tools span:hover{background:#3a3c43}
+.ed-tools span.ed-del:hover{background:#d83c3e;color:#fff}
+[contenteditable]{cursor:text}
+[contenteditable]:hover{outline:1px dashed rgba(88,101,242,.55);outline-offset:1px;border-radius:2px}
+[contenteditable]:focus{outline:2px solid #5865f2;outline-offset:1px;border-radius:2px}
+.ed-tools span.ed-toc.on{color:#faa61a}
+.spoiler{color:inherit!important;background:rgba(88,101,242,.3)!important;outline:1px dashed rgba(88,101,242,.8)}
+${W}>[data-toc]{outline:2px solid rgba(250,166,26,.6);outline-offset:-2px}
+${A}{cursor:pointer}
+${AH}{outline:2px solid #5865f2;outline-offset:2px}
+.ed-flash{animation:edflash 1.4s}
+@keyframes edflash{0%,60%{background:rgba(250,166,26,.3)}100%{background:transparent}}
+.ed-dragging{opacity:.35}
+${W}>.ed-sel{background:rgba(88,101,242,.18)!important;outline:2px solid #5865f2;outline-offset:-2px}
+${W}>.ed-sel>.ed-handle{opacity:1;color:#9fb0ff}
+.ed-tools span.ed-pick{white-space:nowrap}
+${W}>.custom-divider.cd-empty{min-height:22px}
+${W}>.ed-sel .ed-pick{color:#9fb0ff;font-weight:700}
+.ed-drop-b{box-shadow:0 -3px 0 0 #5865f2}
+.ed-drop-a{box-shadow:0 3px 0 0 #5865f2}
+html.ed-drag,html.ed-drag *{cursor:grabbing!important;user-select:none!important}
+html[data-ed="off"] .ed-handle,html[data-ed="off"] .ed-tools{display:none!important}
+html[data-ed="off"] ${W}{padding-left:16px!important}
+`;
+};
+
+/* ---------- 載入 ---------- */
+/* ---------- 時間解析 ---------- */
+const TS_RE = /(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/;
+const DATE_RE = /(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/;
+function stampOf(u, f = F){
+  const el = u.querySelector(f.ts);
+  const m = el && TS_RE.exec(el.textContent);
+  if (!m) return null;
+  return { t: Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)), key: `${m[1]}-${m[2]}-${m[3]}`, s: m[0] };
+}
+function dividerKey(u){
+  if (u.classList.contains('custom-divider')) return null;       // 自訂文字分隔線不參與日期排序
+  const a = u.getAttribute('data-date');
+  if (a && /^\d{4}-\d\d-\d\d$/.test(a)) return a;
+  const m = DATE_RE.exec(u.textContent);
+  return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : null;
+}
+let srcCounter = 0, note = '';
+const dayCutoff = () => +$('#cutoff').value || 0;
+
+/* ---------- 頭像資料（新版格式：頭像以 CSS class 引用，每張只存一次） ---------- */
+function parseAvatars(doc){
+  const m = new Map(), st = doc.querySelector('#avatar-assets');
+  if (!st) return m;
+  const re = /\.(avatar-image-\d+)\s*\{\s*background-image:\s*url\((["']?)([\s\S]*?)\2\)\s*;?\s*\}/g;
+  let x; const text = st.textContent;
+  while ((x = re.exec(text))) m.set(x[1], x[3]);
+  return m;
+}
+const avatarRules = used => [...avatars].filter(([c]) => !used || used.has(c)).map(([c, u]) => `.${c} {\n  background-image: url("${u}");\n}\n`).join('\n');
+function avatarClassFor(url){
+  for (const [c, u] of avatars) if (u === url) return c;
+  let n = 0; avatars.forEach((_, c) => { n = Math.max(n, +c.replace(/\D/g, '')); });
+  const c = 'avatar-image-' + String(n + 1).padStart(3, '0');
+  avatars.set(c, url); return c;
+}
+function syncAvatarStyle(){
+  let el = idoc.getElementById('avatar-assets');
+  if (!el){ el = idoc.createElement('style'); el.id = 'avatar-assets'; idoc.head.appendChild(el); }
+  el.textContent = '\n' + avatarRules() + '\n';
+}
+
+/* ---------- 頻道（新版格式） ---------- */
+function collectChannelLabels(doc, into){
+  doc.querySelectorAll('#channel-filters input[data-channel], #ch-pop input[data-channel]').forEach(i => {
+    const t = (i.closest('label') || i.parentNode).textContent.trim().replace(/（\d+）$/, '');
+    if (t && !into.has(i.getAttribute('data-channel'))) into.set(i.getAttribute('data-channel'), t);
+  });
+}
+function stripChannelUI(doc){
+  doc.querySelectorAll('#channel-filters, #ch-fab, #ch-pop, #filter-empty').forEach(n => n.remove());
+  const hdr = doc.querySelector('.page-header');
+  if (hdr) [...hdr.children].forEach(c => { if (c.tagName === 'DIV' && !c.id && /～/.test(c.textContent)) c.remove(); });
+}
+
+/* ---------- 讀檔 ---------- */
+function detectFormat(doc){
+  if (doc.querySelector('.chat-log')) return FORMATS.neu;
+  if (doc.querySelector('.wrap')) return FORMATS.old;
+  return null;
+}
+async function parseFile(file){
+  const info = { file, name: file.name || 'chat.html', ok: false };
+  try {
+    const text = await file.text();
+    const doc = new DOMParser().parseFromString(text, 'text/html');
+    const f = detectFormat(doc);
+    if (!f) return info;
+    const wrap = doc.querySelector(f.wrap);
+    info.F = f; info.doc = doc; info.ok = true;
+    info.count = wrap.querySelectorAll(':scope > ' + f.msg).length;
+    let lo = null, hi = null;
+    [...wrap.children].forEach(u => {
+      if (u.matches(f.div)) return;
+      const st = stampOf(u, f); if (!st) return;
+      if (!lo || st.t < lo.t) lo = st;
+      if (!hi || st.t > hi.t) hi = st;
+    });
+    info.t0 = lo ? lo.t : Infinity; info.range = lo ? `${lo.s} → ${hi.s}` : '（找不到時間）';
+  } catch (e) {}
+  return info;
+}
+
+// 把一份已解析的檔案當作「底稿」載入（取代目前內容）
+function loadFresh(info){
+  const doc = info.doc;
+  setFormat(info.F);
+  avatars = parseAvatars(doc);
+  const st = doc.querySelector('style#page-styles, style#theme-style') || doc.querySelector('style');
+  origStyleId = (st && st.id && st.id !== 'theme-style') ? st.id : '';
+  const css = (st ? st.textContent : '').replace(/\/\*toc\*\/[\s\S]*?\/\*endtoc\*\//, '').replace(/\/\*vbar\*\/[\s\S]*?\/\*endvbar\*\//, '').replace(/\/\*chfab\*\/[\s\S]*?\/\*endchfab\*\//, '').replace(/\/\*cdiv\*\/[\s\S]*?\/\*endcdiv\*\//, '');
+  // 之前匯出、帶有日夜切換的檔案：深色在 #theme-style（或原本的 id）、淺色在 #theme-light
+  const ls = doc.querySelector('#theme-light');
+  const lsDefaultLight = ls ? ls.getAttribute('media') === 'all' : null;
+  if (ls) ls.remove();
+  doc.querySelectorAll('.vbar, details.toc, .topbar').forEach(n => n.remove());
+  const isLight = lsDefaultLight !== null ? lsDefaultLight : /body\s*\{[^}]*background:\s*#ffffff/i.test(css);
+  baseCSS = ((lsDefaultLight === null && isLight) ? remap(css, INV) : css) + CDIV_CSS;
+  exOpts.theme = null;
+  theme = isLight ? 'light' : 'dark';
+  if (st){ st.id = 'theme-style'; st.textContent = themeCSS(theme); }
+
+  // 編輯時先拿掉 script，匯出時再放回去
+  savedScripts = [];
+  doc.querySelectorAll('script').forEach(s => {
+    // 日夜切換、頻道篩選的 script 會在匯出時重新產生；原本和它們寫在同一支 script 裡的圖片放大功能要留下來
+    if (s.id === 'theme-script' || s.id === 'channel-script' || s.id === 'spoiler-script'){ s.remove(); return; }
+    const t = s.textContent;
+    if (/channel-filters|filterPanel/.test(t)){
+      let j = t.indexOf('// 篩選'); if (j < 0) j = t.indexOf('const filterPanel');
+      const keep = j > 0 ? t.slice(0, j).trim() : '';
+      if (keep) savedScripts.push('<script>\n' + keep + '\n<\/script>');
+    } else savedScripts.push(s.outerHTML);
+    s.remove();
+  });
+  channelLabels = new Map();
+  if (F.name === 'new'){ collectChannelLabels(doc, channelLabels); stripChannelUI(doc); }
+  doc.querySelectorAll(`${F.wrap} > [id^="ch-"]`).forEach(n => n.removeAttribute('id'));
+
+  fileName = info.name;
+  pageTitle = (doc.title || '').trim();
+  const html = '<!DOCTYPE html>' + doc.documentElement.outerHTML;
+
+  frame.style.display = 'block';
+  $('#empty').style.display = 'none';
+  idoc = frame.contentDocument;
+  idoc.open(); idoc.write(html); idoc.close();
+  srcCounter = 0; note = '';
+  setupEditor();
+  undoStack.length = 0; dirty = false; renderToc(); refreshUI();
+}
+
+const dupKey = u => {
+  if (u.id && /^message-/.test(u.id)) return 'id:' + u.id;      // 新版格式：訊息有唯一 id
+  if (u.matches(F.msg)){
+    const st = stampOf(u), bd = u.querySelector('.bd,.message-body'); if (!st || !bd) return null;
+    return `${((u.querySelector(F.nm) || {}).textContent || '').trim()}|${st.s}|${bd.textContent}|${bd.querySelectorAll('img').length}`;
+  }
+  return null;
+};
+
+// 把其他檔案的內容加進目前這份
+function mergeInfos(infos, opts){
+  const wrap = idoc.querySelector(F.wrap);
+  const before = [...wrap.children];
+  const seen = new Set();
+  if (opts.dedupe) before.forEach(u => { const k = dupKey(u); if (k) seen.add(k); });
+  let added = 0, skipped = 0;
+  infos.forEach(info => {
+    const src = ++srcCounter;
+    const theirs = F.name === 'new' ? parseAvatars(info.doc) : null;
+    if (F.name === 'new') collectChannelLabels(info.doc, channelLabels);
+    const clsMap = new Map();     // 對方的頭像 class -> 我們這份裡的 class
+    [...info.doc.querySelector(F.wrap).children].forEach(u => {
+      if (opts.dedupe){
+        const k = dupKey(u);
+        if (k){ if (seen.has(k)){ skipped++; return; } seen.add(k); }
+      }
+      const n = idoc.importNode(u, true);
+      n.__src = src;
+      if (/^ch-\d+$/.test(n.id)) n.removeAttribute('id');
+      if (theirs){
+        n.querySelectorAll(':scope > .avatar').forEach(a => {
+          const c = [...a.classList].find(x => /^avatar-image-\d+$/.test(x));
+          if (!c) return;
+          if (!clsMap.has(c)) clsMap.set(c, theirs.has(c) ? avatarClassFor(theirs.get(c)) : null);
+          a.classList.remove(c);
+          if (clsMap.get(c)) a.classList.add(clsMap.get(c));
+        });
+      }
+      addTools(n); wrap.appendChild(n); added++;
+    });
+  });
+  if (F.name === 'new') syncAvatarStyle();
+  if (opts.sort) sortAndDivide(wrap);
+  applyEditable();
+  const nMsg = idoc.querySelectorAll(`${F.wrap} > ${F.msg}`).length;
+  note = infos.length ? `已加入 ${infos.length} 個檔案（新增 ${added} 個項目${skipped ? `，略過重複 ${skipped} 則` : ''}），共 ${nMsg} 則` : '';
+  pushUndo(() => wrap.replaceChildren(...before));
+}
+
+/* ---------- 依時間排序 + 重建日期分隔線 ---------- */
+function newDivider(key){
+  const [y, m, d] = key.split('-');
+  const el = idoc.createElement('div');
+  el.className = F.div.slice(1); el.textContent = `${y}年${m}月${d}日`;
+  if (F.name === 'new') el.setAttribute('data-date', key);
+  addTools(el); return el;
+}
+function sortAndDivide(wrap){
+  const kids = [...wrap.children], pool = new Map(), items = [];
+  kids.forEach((u, i) => {
+    if (u.matches(F.div)){
+      const k = dividerKey(u);
+      if (k){ const c = pool.get(k); if (!c || (u.hasAttribute('data-toc') && !c.hasAttribute('data-toc'))) pool.set(k, u); return; }
+    }
+    items.push({ u, i, src: u.__src || 0, st: stampOf(u) });
+  });
+  // 沒有時間的項目（例如系統訊息）：跟著同檔案相鄰的那則走
+  let prev = null;
+  items.forEach(it => { if (it.st) prev = it; else if (prev && prev.src === it.src) it.st = prev.st; });
+  let nxt = null;
+  for (let j = items.length - 1; j >= 0; j--){ const it = items[j]; if (it.st) nxt = it; else if (nxt && nxt.src === it.src) it.st = nxt.st; }
+  prev = null;
+  items.forEach(it => { if (it.st) prev = it; else if (prev) it.st = prev.st; });
+  items.forEach(it => { if (!it.st) it.st = { t: 0, key: null }; });
+
+  items.sort((a, b) => a.st.t - b.st.t || a.src - b.src || a.i - b.i);
+  const out = []; let last = null;
+  items.forEach(it => {
+    const k = it.st.t ? new Date(it.st.t - dayCutoff() * 3600000).toISOString().slice(0, 10) : null;
+    if (k && k !== last){ out.push(pool.get(k) || newDivider(k)); pool.delete(k); last = k; }
+    // 新版格式：訊息的 data-date 要跟所屬的日期分隔線一致（頻道篩選靠它顯示／隱藏日期）
+    if (k && F.name === 'new' && it.u.hasAttribute('data-date')) it.u.setAttribute('data-date', k);
+    out.push(it.u);
+  });
+  wrap.replaceChildren(...out);
+}
+function sortNow(){
+  if (!idoc) return;
+  const wrap = idoc.querySelector(F.wrap), before = [...wrap.children];
+  sortAndDivide(wrap); applyEditable();
+  pushUndo(() => wrap.replaceChildren(...before));
+}
+
+/* ---------- 匯入流程（開啟／加入／拖放） ---------- */
+async function startImport(files, forced){
+  files = [...files].filter(f => /\.html?$/i.test(f.name) || f.type === 'text/html');
+  if (!files.length){ alert('請選擇 .html 檔案。'); return; }
+  setStatus('讀取中…');
+  const infos = [];
+  for (const f of files) infos.push(await parseFile(f));   // 一個一個讀，避免記憶體暴衝
+  let good = infos.filter(i => i.ok);
+  if (!good.length){ alert('找不到對話內容，這些檔案可能不是這個編輯器支援的格式。'); refreshUI(); if (!idoc) setStatus('尚未載入檔案'); return; }
+  good.sort((a, b) => a.t0 - b.t0);
+  const mode = forced || (idoc ? null : 'replace');
+
+  // 格式不同的檔案沒辦法混在一起
+  const baseName = () => (mode === 'add' ? F.name : good[0].F.name);
+  if (mode !== null){
+    const bn = baseName();
+    infos.forEach(i => { if (i.ok && i.F.name !== bn){ i.ok = false; i.why = '格式和其他檔案不同，會略過'; } });
+    good = infos.filter(i => i.ok).sort((a, b) => a.t0 - b.t0);
+    if (!good.length){ alert('這些檔案的格式和目前的不同，沒辦法合併。'); refreshUI(); return; }
+  }
+
+  if (mode === 'replace' && good.length === 1 && infos.length === 1){
+    if (idoc && dirty && !confirm('目前的修改還沒匯出，確定要換檔案嗎？')){ refreshUI(); return; }
+    loadFresh(good[0]); return;
+  }
+
+  // 顯示確認視窗
+  $('#impTitle').textContent = mode === 'add' ? `加入 ${good.length} 個檔案` : `載入 ${good.length} 個檔案`;
+  const list = $('#impList'); list.innerHTML = '';
+  infos.forEach(i => {
+    const d = document.createElement('div'); d.className = 'improw' + (i.ok ? '' : ' bad');
+    const nm = document.createElement('div'); nm.textContent = i.name;
+    const sm = document.createElement('small');
+    sm.textContent = i.ok ? `${i.count} 則　${i.range}　（${i.F.label}）` : (i.why || '格式不符，會略過');
+    d.append(nm, sm); list.appendChild(d);
+  });
+  $('#impMode').style.display = mode ? 'none' : 'flex';
+  $('#impSort').checked = true; $('#impDup').checked = true;
+  const cutoffOf = () => String(good[0].F.cutoff === undefined ? dayCutoff() : dayCutoff()).padStart(2, '0');
+  $('#impSortTxt').textContent = `依時間排序，並重新產生日期分隔線（換日時間：${cutoffOf()}:00，可在工具列調整）`;
+  $('#impGo').textContent = '載入';
+  $('#impCancel').onclick = () => { closeOv('ovImp'); refreshUI(); if (!idoc) setStatus('尚未載入檔案'); };
+  $('#impGo').onclick = () => {
+    const m = mode || document.querySelector('input[name=impm]:checked').value;
+    const opts = { sort: $('#impSort').checked, dedupe: $('#impDup').checked };
+    // 沒有事先指定模式時（拖放），到這裡才知道要以哪種格式為準
+    const bn = m === 'add' ? F.name : good[0].F.name;
+    const usable = good.filter(i => i.F.name === bn);
+    if (!usable.length){ alert('這些檔案的格式和目前的不同，沒辦法加入。'); return; }
+    if (m === 'replace' && idoc && dirty && !confirm('目前的修改還沒匯出，確定要取代嗎？')) return;
+    closeOv('ovImp');
+    setStatus('合併中…');
+    setTimeout(() => {
+      if (m === 'replace'){
+        loadFresh(usable[0]);
+        if (usable.length > 1){
+          const base = usable[0].name.replace(/_part\d+(?=\.html?$)/i, '');
+          fileName = base !== usable[0].name ? base : '合併團錄.html';
+        }
+        mergeInfos(usable.slice(1), opts);
+        if (usable.length === 1 && opts.sort) sortNow();
+        undoStack.length = 0; dirty = usable.length > 1; refreshUI();
+      } else {
+        mergeInfos(usable, opts);
+      }
+      renderToc(); refreshUI();
+    }, 30);
+  };
+  openOv('ovImp');
+}
+
+function setupEditor(){
+  const style = idoc.createElement('style');
+  style.id = 'ed-style'; style.textContent = edCss();
+  idoc.head.appendChild(style);
+  idoc.documentElement.dataset.ed = 'on';
+  idoc.querySelectorAll(F.wrap + ' > *').forEach(addTools);
+  editing = true; applyEditable();
+  syncModeButtons(); syncThemeButtons();
+
+  lastUnit = null; selAnchor = null; selRefresh();
+  const track = e => { const t = e.target; if (!t.closest || t.closest('.ed-tools,.ed-handle')) return; const u = t.closest(F.wrap + ' > *'); if (u) lastUnit = u; };
+  idoc.addEventListener('pointerdown', track); idoc.addEventListener('focusin', track);
+  idoc.addEventListener('keydown', onKey);
+  idoc.addEventListener('paste', onPaste);
+  idoc.addEventListener('input', e => {
+    const cd = e.target.closest && e.target.closest('.custom-divider');
+    if (cd) cd.classList.toggle('cd-empty', !plainText(cd));
+    dirty = true; refreshUI();
+  });
+  idoc.addEventListener('pointerdown', onPointerDown);
+  idoc.addEventListener('click', onToolClick);
+  idoc.addEventListener('dragover', e => e.preventDefault());
+  idoc.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length){ e.preventDefault(); startImport(e.dataTransfer.files, null); } });
+  $('#tip').style.display = 'block';
+}
+
+/* ---------- 每則訊息的把手與工具 ---------- */
+function addTools(unit){
+  unit.querySelectorAll(':scope > .ed-handle, :scope > .ed-tools').forEach(n => n.remove());
+  const h = idoc.createElement('div');
+  h.className = 'ed-handle'; h.textContent = '⠿'; h.title = '拖曳以移動';
+  h.setAttribute('contenteditable', 'false');
+  const t = idoc.createElement('div');
+  t.className = 'ed-tools'; t.setAttribute('contenteditable', 'false');
+  const on = unit.hasAttribute('data-toc');
+  t.innerHTML = `<span class="ed-pick" title="選取起來，可以和其他訊息一起拖曳">☑ 選取</span><span class="ed-addm" title="在這則後面新增一則對話">＋對話</span><span class="ed-addd" title="在這則後面新增文字分隔線">＋分隔線</span><span class="ed-toc${on ? ' on' : ''}">${on ? '★ 移出目錄' : '☰ 目錄'}</span><span class="ed-dup">⧉ 複製</span><span class="ed-del">✕ 刪除</span>`;
+  unit.append(h, t);
+}
+
+function onToolClick(e){
+  const av = editing && e.target.closest && e.target.closest(each(F.av, a => `${F.wrap} > ${F.msg} > ${a}`));
+  if (av){ pendingAv = av.parentNode; $('#avFile').click(); return; }
+  const el = e.target.closest && e.target.closest('.ed-dup,.ed-del,.ed-toc,.ed-pick,.ed-addm,.ed-addd');
+  if (!el) return;
+  const unit = el.closest(F.wrap + ' > *');
+  if (!unit) return;
+  if (el.classList.contains('ed-pick')){ selToggle(unit); selAnchor = unit; return; }
+  if (el.classList.contains('ed-addm')){ addMessage(unit); return; }
+  if (el.classList.contains('ed-addd')){ addDivider(unit); return; }
+  if (el.classList.contains('ed-toc')){
+    if (unit.hasAttribute('data-toc')) setChapter(unit, null);
+    else { setChapter(unit, defaultTitle(unit), true); }
+    return;
+  }
+  if (el.classList.contains('ed-del')){
+    const parent = unit.parentNode, next = unit.nextSibling;
+    unit.remove();
+    pushUndo(() => parent.insertBefore(unit, next && next.parentNode === parent ? next : null));
+  } else {
+    const clone = unit.cloneNode(true);
+    clone.classList.remove('ed-dragging','ed-drop-b','ed-drop-a','ed-sel');
+    clone.removeAttribute('data-toc'); clone.removeAttribute('data-toc-lv'); clone.removeAttribute('id');
+    addTools(clone);
+    unit.after(clone);
+    pushUndo(() => clone.remove());
+  }
+}
+
+/* ---------- 選取多則 ---------- */
+const selList = () => idoc ? [...idoc.querySelectorAll(F.wrap + ' > .ed-sel')] : [];
+function selRefresh(){
+  const n = selList().length;
+  $('#selInfo').style.display = n ? 'flex' : 'none'; $('#selN').textContent = n;
+}
+function selToggle(u, on){ u.classList.toggle('ed-sel', on === undefined ? !u.classList.contains('ed-sel') : on); selRefresh(); }
+function selClear(){ selList().forEach(u => u.classList.remove('ed-sel')); selRefresh(); }
+function selRange(wrap, a, b){
+  const kids = [...wrap.children]; let i = kids.indexOf(a), j = kids.indexOf(b);
+  if (i < 0 || j < 0) return; if (i > j) [i, j] = [j, i];
+  for (let k = i; k <= j; k++) kids[k].classList.add('ed-sel');
+  selRefresh();
+}
+function selDelete(){
+  const list = selList(); if (!list.length) return;
+  const wrap = list[0].parentNode, before = [...wrap.children];
+  list.forEach(u => u.remove());
+  pushUndo(() => wrap.replaceChildren(...before)); selRefresh();
+}
+
+/* ---------- 拖曳排序（滑鼠、觸控都可；選取多則時一起搬） ---------- */
+function onPointerDown(e){
+  const h = e.target.closest && e.target.closest('.ed-handle');
+  if (!h || e.button > 0) return;
+  const unit = h.parentNode, wrap = unit.parentNode, win = idoc.defaultView;
+  e.preventDefault();
+  // Ctrl／⌘ + 點把手：加入或取消選取；Shift + 點把手：選取一個範圍
+  if (e.ctrlKey || e.metaKey){ selToggle(unit); selAnchor = unit; return; }
+  if (e.shiftKey && selAnchor && selAnchor.isConnected){ selRange(wrap, selAnchor, unit); return; }
+  if (!unit.classList.contains('ed-sel')) selClear();
+  const moving = unit.classList.contains('ed-sel') ? selList() : [unit];
+  selAnchor = unit;
+  if (h.setPointerCapture) h.setPointerCapture(e.pointerId);
+  const before = [...wrap.children];
+  moving.forEach(u => u.classList.add('ed-dragging'));
+  idoc.documentElement.classList.add('ed-drag');
+
+  let marked = null, dest = null, lastY = e.clientY, vy = 0, raf = 0;
+
+  const clearMark = () => { if (marked){ marked.classList.remove('ed-drop-b','ed-drop-a'); marked = null; } };
+  const locate = () => {
+    clearMark(); dest = undefined;
+    const items = [...wrap.children].filter(c => !moving.includes(c));
+    if (!items.length) return;
+    for (const c of items){
+      const r = c.getBoundingClientRect();
+      if (lastY < r.top + r.height / 2){ dest = c; c.classList.add('ed-drop-b'); marked = c; return; }
+    }
+    dest = null; const last = items[items.length - 1];
+    last.classList.add('ed-drop-a'); marked = last;
+  };
+  const tick = () => { if (vy){ win.scrollBy(0, vy); locate(); } raf = requestAnimationFrame(tick); };
+  raf = requestAnimationFrame(tick);
+
+  const move = ev => {
+    lastY = ev.clientY;
+    const edge = 70, H = win.innerHeight;
+    vy = lastY < edge ? -(edge - lastY) / 2.5 : lastY > H - edge ? (lastY - (H - edge)) / 2.5 : 0;
+    locate();
+  };
+  const end = ev => {
+    cancelAnimationFrame(raf);
+    h.removeEventListener('pointermove', move);
+    h.removeEventListener('pointerup', end);
+    h.removeEventListener('pointercancel', end);
+    clearMark();
+    moving.forEach(u => u.classList.remove('ed-dragging'));
+    idoc.documentElement.classList.remove('ed-drag');
+    if (ev.type !== 'pointercancel' && dest !== undefined){
+      moving.forEach(u => wrap.insertBefore(u, dest));          // 依原本的先後順序一起放到新位置
+      const after = [...wrap.children];
+      if (after.some((u, i) => u !== before[i])) pushUndo(() => wrap.replaceChildren(...before));
+    }
+  };
+  h.addEventListener('pointermove', move);
+  h.addEventListener('pointerup', end);
+  h.addEventListener('pointercancel', end);
+  move(e);
+}
+
+/* ---------- 新增對話／文字分隔線 ---------- */
+function insertionPoint(ref){
+  const wrap = idoc.querySelector(F.wrap);
+  const r = ref && ref.isConnected ? ref : (lastUnit && lastUnit.isConnected ? lastUnit : null);
+  return { wrap, at: r || wrap.lastElementChild };
+}
+function focusText(el){
+  applyEditable();
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  el.focus();
+  const sel = idoc.getSelection(), r = idoc.createRange(); r.selectNodeContents(el); sel.removeAllRanges(); sel.addRange(r);
+}
+function addMessage(ref){
+  if (!idoc) return;
+  const { wrap, at } = insertionPoint(ref);
+  // 以前面最近的一則對話當範本（同一個角色、頭像、頻道），內容清空
+  let m = at; while (m && !m.matches(F.msg)) m = m.previousElementSibling;
+  if (!m) m = wrap.querySelector(':scope > ' + F.msg);
+  if (!m) return hint('找不到可以當範本的對話');
+  const n = m.cloneNode(true);
+  n.querySelectorAll('.ed-handle,.ed-tools').forEach(x => x.remove());
+  ['id', 'data-toc', 'data-toc-lv'].forEach(a => n.removeAttribute(a));
+  n.classList.remove('ed-dragging', 'ed-drop-b', 'ed-drop-a', 'ed-flash', 'ed-sel');
+  const body = n.querySelector(F.body), head = body && body.querySelector(F.head);
+  if (!body || !head) return hint('這則對話的結構認不出來，沒辦法當範本');
+  let tx = body.querySelector(':scope > .tx');
+  [...body.children].forEach(ch => { if (ch !== head && ch !== tx) ch.remove(); });   // 回覆、附件、嵌入、表情反應都不帶
+  if (!tx){ tx = idoc.createElement('div'); tx.className = 'tx'; body.appendChild(tx); }
+  tx.textContent = '新訊息';
+  n.__src = m.__src || 0;
+  addTools(n);
+  if (at) at.after(n); else wrap.appendChild(n);
+  lastUnit = n;
+  pushUndo(() => n.remove());
+  focusText(tx);
+  hint('已新增一則：角色和時間先沿用範本，可直接修改（點頭像可換圖）');
+}
+function addDivider(ref){
+  if (!idoc) return;
+  const { wrap, at } = insertionPoint(ref);
+  const el = idoc.createElement('div');
+  el.className = F.div.slice(1) + ' custom-divider'; el.textContent = '新章節';
+  addTools(el);
+  if (at) at.after(el); else wrap.appendChild(el);
+  lastUnit = el;
+  pushUndo(() => el.remove());
+  focusText(el);
+}
+
+/* ---------- 文字編輯 ---------- */
+function applyEditable(){
+  idoc.querySelectorAll(EDITABLE).forEach(n => {
+    if (n.closest('.ed-tools')) return;
+    if (editing) n.setAttribute('contenteditable', 'true'); else n.removeAttribute('contenteditable');
+  });
+  idoc.documentElement.dataset.ed = editing ? 'on' : 'off';
+}
+
+function onKey(e){
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's'){ e.preventDefault(); openExport(); return; }
+  const t = e.target;
+  if (e.key === 'Escape' && selList().length){ selClear(); return; }
+  if (e.key === 'Enter' && t.isContentEditable && !e.isComposing && e.keyCode !== 229){
+    if (selClosest('li') && !t.matches(SINGLE)) return;
+    e.preventDefault();                // 清單項目：用瀏覽器原本的 Enter（新增下一個項目）
+    if (insertInPre('\n')) return;
+    if (t.matches(SINGLE)) t.blur(); else idoc.execCommand('insertLineBreak');
+  }
+}
+function onPaste(e){
+  const t = e.target;
+  if (!t.isContentEditable) return;
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  if (insertInPre(text.replace(/\r\n?/g, '\n'))) return;
+  if (t.matches(SINGLE)){ idoc.execCommand('insertText', false, text.replace(/\s*\r?\n\s*/g, ' ')); return; }
+  text.split(/\r?\n/).forEach((line, i) => {
+    if (i) idoc.execCommand('insertLineBreak');
+    if (line) idoc.execCommand('insertText', false, line);
+  });
+}
+function fmt(cmd){ if (idoc && editing){ idoc.execCommand(cmd); dirty = true; refreshUI(); } }
+
+/* ---------- Discord 格式：標題、副標、引用、程式碼 ---------- */
+// 輸出的 HTML 結構跟 Discord 匯出一致：
+//   大／中／小標題 <div class="dc-h1|dc-h2|dc-h3">  副標 <span class="dc-sub">  引用 <span class="qt">
+//   行內程式碼 <code>  程式碼區塊 <pre><code>
+let hintTimer = 0;
+function hint(msg){ setStatus(msg); clearTimeout(hintTimer); hintTimer = setTimeout(refreshUI, 3000); }
+const isBr = n => n && n.nodeType === 1 && n.tagName === 'BR';
+const isBlk = n => n && n.nodeType === 1 && (/^(DIV|PRE|UL|OL|P|H[1-6])$/.test(n.tagName) || n.classList.contains('qt'));
+function curTx(){
+  if (!idoc || !editing) return null;
+  const sel = idoc.getSelection(); if (!sel || !sel.rangeCount) return null;
+  const r = sel.getRangeAt(0);
+  let n = r.commonAncestorContainer; if (n.nodeType === 3) n = n.parentNode;
+  const tx = n.closest && n.closest('.tx');
+  return tx ? { tx, r, sel } : null;
+}
+function topChild(tx, node, off){
+  if (node === tx) return tx.childNodes[Math.min(off, tx.childNodes.length - 1)] || null;
+  while (node && node.parentNode !== tx) node = node.parentNode;
+  return node;
+}
+// 把訊息內容拆成一行一行：{ nodes, br（行尾換行）, block（整行就是一個區塊）, first, last }
+function getLines(c){
+  const { tx, r } = c, kids = [...tx.childNodes];
+  let si = kids.indexOf(topChild(tx, r.startContainer, r.startOffset));
+  let ei = kids.indexOf(topChild(tx, r.endContainer, r.endOffset));
+  if (si < 0 || ei < 0) return [];
+  if (!r.collapsed && r.endOffset === 0 && r.endContainer !== tx && ei > si) ei--;   // 三連點選取會多選到下一行開頭
+  if (ei < si) ei = si;
+  const lines = []; let cur = { nodes: [], br: null, block: null, first: 0, last: 0 };
+  kids.forEach((n, i) => {
+    if (isBr(n)){ cur.br = n; cur.last = i; lines.push(cur); cur = { nodes: [], br: null, block: null, first: i + 1, last: i + 1 }; }
+    else if (isBlk(n)){
+      if (cur.nodes.length){ cur.last = i - 1; lines.push(cur); }
+      lines.push({ nodes: [], br: null, block: n, first: i, last: i });
+      cur = { nodes: [], br: null, block: null, first: i + 1, last: i + 1 };
+    } else { if (!cur.nodes.length) cur.first = i; cur.nodes.push(n); cur.last = i; }
+  });
+  if (cur.nodes.length) lines.push(cur);
+  const hit = lines.filter(l => l.last >= si && l.first <= ei);
+  c.kids = kids;
+  return hit;
+}
+function wrapNodes(nodes, tag, cls){
+  const el = idoc.createElement(tag); if (cls) el.className = cls;
+  nodes[0].before(el); nodes.forEach(n => el.appendChild(n)); return el;
+}
+function unwrapEl(el){        // 區塊拿掉後，原本吃掉的行尾換行要補回來
+  let next = el.nextSibling; while (next && next.nodeType === 8) next = next.nextSibling;
+  const frag = idoc.createDocumentFragment();
+  if (el.tagName === 'PRE'){
+    el.textContent.split('\n').forEach((t, i) => { if (i) frag.appendChild(idoc.createElement('br')); if (t) frag.appendChild(idoc.createTextNode(t)); });
+  } else while (el.firstChild) frag.appendChild(el.firstChild);
+  if (next) frag.appendChild(idoc.createElement('br'));
+  const last = frag.lastChild; el.replaceWith(frag); return last;
+}
+function caretIn(c, el){
+  if (!el || !el.isConnected) return;
+  c.sel.removeAllRanges(); const r = idoc.createRange(); r.selectNodeContents(el); r.collapse(false); c.sel.addRange(r);
+}
+// 把一次格式操作包成可復原的動作
+function withUndo(c, fn){
+  const before = c.tx.innerHTML;
+  const res = fn();
+  if (c.tx.innerHTML === before) return;
+  pushUndo(() => { c.tx.innerHTML = before; });
+}
+
+function fmtBlock(kind){
+  const c = curTx(); if (!c) return hint('請先點進一則訊息的內文，再按格式按鈕');
+  const lines = getLines(c); if (!lines.length) return;
+  const cls = kind === 'qt' ? 'qt' : 'dc-' + kind, tag = kind === 'qt' ? 'span' : 'div';
+  const isHead = k => /^dc-h\d$/.test(k);
+  withUndo(c, () => {
+    const allOn = lines.every(l => l.block && l.block.classList.contains(cls));
+    let last = null;
+    lines.forEach(l => {
+      if (l.block){
+        if (allOn){ last = unwrapEl(l.block); }
+        else if (l.block.tagName === 'DIV' && isHead(cls) && [...l.block.classList].some(isHead)){ l.block.className = cls; last = l.block; }
+      } else if (!allOn && l.nodes.length){
+        const el = wrapNodes(l.nodes, tag, cls);
+        if (l.br) l.br.remove();           // 區塊本身就會換行，不需要再多一個 <br>
+        last = el;
+      }
+    });
+    caretIn(c, last && last.nodeType === 1 ? last : null);
+  });
+}
+function fmtSub(){
+  const c = curTx(); if (!c) return hint('請先點進一則訊息的內文，再按格式按鈕');
+  const lines = getLines(c).filter(l => !l.block); if (!lines.length) return;
+  withUndo(c, () => {
+    const isSub = l => l.nodes.length === 1 && l.nodes[0].nodeType === 1 && l.nodes[0].classList.contains('dc-sub');
+    const allOn = lines.every(isSub);
+    lines.forEach(l => {
+      if (allOn){ const sp = l.nodes[0], frag = idoc.createDocumentFragment(); while (sp.firstChild) frag.appendChild(sp.firstChild); sp.replaceWith(frag); }
+      else if (l.nodes.length && !isSub(l)) wrapNodes(l.nodes, 'span', 'dc-sub');
+    });
+  });
+}
+function fmtQuoteBlock(){
+  const c = curTx(); if (!c) return hint('請先點進一則訊息的內文，再按格式按鈕');
+  let lines = getLines(c); if (!lines.length) return;
+  if (lines.length === 1 && lines[0].block && lines[0].block.classList.contains('qt')){
+    return withUndo(c, () => caretIn(c, unwrapEl(lines[0].block)));
+  }
+  if (c.r.collapsed){                         // 沒選取：從這一行一路引用到訊息結尾（跟 Discord 的 >>> 一樣）
+    const all = getLinesAll(c), i = Math.max(0, all.findIndex(l => l.first === lines[0].first)); lines = all.slice(i);
+  }
+  if (lines.some(l => l.block)) return hint('範圍內有標題、引用或程式碼區塊，請縮小選取範圍');
+  withUndo(c, () => {
+    const kids = c.kids, from = lines[0].first, to = lines[lines.length - 1].last;
+    let nodes = kids.slice(from, to + 1);
+    const tail = lines[lines.length - 1].br;
+    if (tail){ nodes = nodes.filter(n => n !== tail); tail.remove(); }
+    if (!nodes.length) return;
+    caretIn(c, wrapNodes(nodes, 'span', 'qt'));
+  });
+}
+function getLinesAll(c){          // 整則訊息的所有行
+  const keep = c.r, tx = c.tx;
+  const rr = idoc.createRange(); rr.selectNodeContents(tx);
+  const fake = { tx, r: rr, sel: c.sel }; const ls = getLines(fake); c.kids = fake.kids; return ls;
+}
+function fmtCode(){
+  const c = curTx(); if (!c) return hint('請先選取要變成程式碼的文字');
+  const inCode = (() => { let n = c.r.commonAncestorContainer; if (n.nodeType === 3) n = n.parentNode; const k = n.closest('code'); return k && !k.closest('pre') ? k : null; })();
+  if (inCode) return withUndo(c, () => { const t = idoc.createTextNode(inCode.textContent); inCode.replaceWith(t); });
+  if (c.r.collapsed) return hint('請先選取要變成程式碼的文字');
+  const probe = c.r.cloneContents();
+  if (probe.querySelector('br,div,pre,.qt')) return hint('行內程式碼只能用在同一行內的文字');
+  withUndo(c, () => {
+    const frag = c.r.extractContents(), code = idoc.createElement('code');
+    code.appendChild(frag); c.r.insertNode(code);
+    caretIn(c, code);
+  });
+}
+function fmtPre(){
+  const c = curTx(); if (!c) return hint('請先點進一則訊息的內文，再按格式按鈕');
+  const lines = getLines(c); if (!lines.length) return;
+  if (lines.length === 1 && lines[0].block && lines[0].block.tagName === 'PRE'){
+    return withUndo(c, () => caretIn(c, unwrapEl(lines[0].block)));
+  }
+  if (lines.some(l => l.block)) return hint('範圍內有標題、引用或程式碼區塊，請縮小選取範圍');
+  withUndo(c, () => {
+    const kids = c.kids, from = lines[0].first, to = lines[lines.length - 1].last;
+    const tail = lines[lines.length - 1].br;
+    let nodes = kids.slice(from, to + 1);
+    if (tail) nodes = nodes.filter(n => n !== tail);
+    const text = nodes.map(n => isBr(n) ? '\n' : n.textContent).join('');
+    const pre = idoc.createElement('pre'), code = idoc.createElement('code');
+    code.textContent = text; pre.appendChild(code);
+    nodes[0] ? nodes[0].before(pre) : (tail ? tail.before(pre) : c.tx.appendChild(pre));
+    nodes.forEach(n => n.remove()); if (tail) tail.remove();
+    caretIn(c, code);
+  });
+}
+// 在程式碼區塊裡面：Enter／貼上用真正的換行字元（不要變成 <br>）
+function insertInPre(text){
+  const sel = idoc.getSelection(); if (!sel || !sel.rangeCount) return false;
+  let n = sel.anchorNode; if (!n) return false; if (n.nodeType === 3) n = n.parentNode;
+  const pre = n.closest && n.closest('pre'); if (!pre) return false;
+  const r = sel.getRangeAt(0); r.deleteContents();
+  const tn = idoc.createTextNode(text); r.insertNode(tn);
+  let after = '', x = tn.nextSibling; while (x){ after += x.textContent; x = x.nextSibling; }
+  if (!after && /\n$/.test(text)) tn.after(idoc.createTextNode('\n'));     // 結尾多放一個換行，游標才看得到新的一行（匯出時會去掉）
+  r.setStartAfter(tn); r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
+  dirty = true; refreshUI(); return true;
+}
+const selClosest = q => {
+  const sel = idoc && idoc.getSelection(); if (!sel || !sel.anchorNode) return null;
+  let n = sel.anchorNode; if (n.nodeType === 3) n = n.parentNode;
+  return n.closest ? n.closest(q) : null;
+};
+const ancestorOf = (c, q) => {
+  let n = c.r.commonAncestorContainer; if (n.nodeType === 3) n = n.parentNode;
+  const a = n.closest && n.closest(q); return a && c.tx.contains(a) ? a : null;
+};
+const unwrapInline = el => { const f = idoc.createDocumentFragment(); while (el.firstChild) f.appendChild(el.firstChild); el.replaceWith(f); };
+const INLINE = {
+  u:       { tag: 'u',    cls: '',           sel: 'u' },
+  s:       { tag: 's',    cls: '',           sel: 's,strike,del' },
+  spoiler: { tag: 'span', cls: 'spoiler',    sel: 'span.spoiler' },
+  mention: { tag: 'span', cls: 'mention',    sel: 'span.mention',    prefix: '@' },
+  ch:      { tag: 'span', cls: 'mention-ch', sel: 'span.mention-ch', prefix: '#' }
+};
+// 把目前選取的文字包進一個行內元素（底線、刪除線、劇透、提及…），已經包著就拿掉
+function wrapSelection(c, make, afterWrap){
+  const probe = c.r.cloneContents();
+  if (probe.querySelector('div,pre,.qt,ul,ol')) return hint('選取範圍內有標題、引用、清單或程式碼區塊，請縮小選取範圍');
+  withUndo(c, () => {
+    const frag = c.r.extractContents(), el = make();
+    if (afterWrap) afterWrap(el, frag);
+    el.appendChild(frag); c.r.insertNode(el); caretIn(c, el);
+  });
+}
+function fmtInline(kind){
+  const c = curTx(); if (!c) return hint('請先選取要套用的文字');
+  const sp = INLINE[kind];
+  if (ancestorOf(c, 'pre,code')) return hint('程式碼裡面不能再套用其他格式');
+  const ex = ancestorOf(c, sp.sel);
+  if (ex) return withUndo(c, () => unwrapInline(ex));
+  const make = () => { const e = idoc.createElement(sp.tag); if (sp.cls) e.className = sp.cls; return e; };
+  if (c.r.collapsed){
+    if (!sp.prefix) return hint('請先選取要套用的文字');
+    const name = prompt(kind === 'mention' ? '要提及誰？（輸入名字）' : '要提及哪個頻道？（輸入名稱）'); if (!name || !name.trim()) return;
+    return withUndo(c, () => { const e = make(); e.textContent = sp.prefix + name.trim().replace(/^[@#]/, ''); c.r.insertNode(e); caretIn(c, e); });
+  }
+  wrapSelection(c, make, sp.prefix ? (el, frag) => {      // 提及：確保前面有 @ 或 #
+    if (![...frag.childNodes].every(n => n.nodeType === 3)) return;
+    const t = frag.textContent; while (frag.firstChild) frag.firstChild.remove();
+    frag.appendChild(idoc.createTextNode(t.startsWith(sp.prefix) ? t : sp.prefix + t));
+  } : null);
+}
+const normUrl = u => { u = u.trim(); return /^([a-z][a-z0-9+.-]*:|\/\/)/i.test(u) ? u : 'https://' + u; };
+function fmtLink(){
+  const c = curTx(); if (!c) return hint('請先選取要加上連結的文字');
+  if (ancestorOf(c, 'pre,code')) return hint('程式碼裡面不能加連結');
+  const ex = ancestorOf(c, 'a');
+  if (ex){
+    const u = prompt('修改網址（清空＝移除連結）', ex.getAttribute('href') || ''); if (u === null) return;
+    return withUndo(c, () => { if (!u.trim()) unwrapInline(ex); else ex.setAttribute('href', normUrl(u)); });
+  }
+  const u = prompt('連結網址（例如 https://example.com）'); if (!u || !u.trim()) return;
+  const make = () => { const a = idoc.createElement('a'); a.className = 'lnk'; a.setAttribute('href', normUrl(u)); a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer'); return a; };
+  if (c.r.collapsed) return withUndo(c, () => { const a = make(); a.textContent = u.trim(); c.r.insertNode(a); caretIn(c, a); });
+  wrapSelection(c, make);
+}
+function unwrapList(bl){
+  const lis = [...bl.children], f = idoc.createDocumentFragment();
+  let next = bl.nextSibling; while (next && next.nodeType === 8) next = next.nextSibling;
+  lis.forEach((li, i) => { while (li.firstChild) f.appendChild(li.firstChild); if (i < lis.length - 1 || next) f.appendChild(idoc.createElement('br')); });
+  const last = f.lastChild; bl.replaceWith(f); return last;
+}
+function fmtList(ordered){
+  const c = curTx(); if (!c) return hint('請先點進一則訊息的內文，再按格式按鈕');
+  const lines = getLines(c); if (!lines.length) return;
+  const tag = ordered ? 'ol' : 'ul';
+  const one = lines.length === 1 && lines[0].block && /^(UL|OL)$/.test(lines[0].block.tagName) ? lines[0].block : null;
+  if (one) return withUndo(c, () => {
+    if (one.tagName.toLowerCase() === tag) caretIn(c, unwrapList(one));
+    else { const n = idoc.createElement(tag); n.className = 'md-list'; while (one.firstChild) n.appendChild(one.firstChild); one.replaceWith(n); }
+  });
+  if (lines.some(l => l.block)) return hint('範圍內有標題、引用、清單或程式碼區塊，請縮小選取範圍');
+  const items = lines.filter(l => l.nodes.length); if (!items.length) return;
+  withUndo(c, () => {
+    const list = idoc.createElement(tag); list.className = 'md-list';
+    items[0].nodes[0].before(list);
+    items.forEach(l => { const li = idoc.createElement('li'); l.nodes.forEach(n => li.appendChild(n)); list.appendChild(li); });
+    lines.forEach(l => { if (l.br) l.br.remove(); });
+    caretIn(c, list.lastChild);
+  });
+}
+const STRIP = 'strong,b,em,i,u,s,strike,del,code,a,font,mark,span.spoiler,span.dc-sub,span.mention,span.mention-ch';
+function fmtClear(){
+  const c = curTx(); if (!c) return hint('請先點進一則訊息的內文，再按格式按鈕');
+  const lines = getLines(c); if (!lines.length) return;
+  withUndo(c, () => {
+    const kids = c.kids, first = kids[lines[0].first], last = kids[lines[lines.length - 1].last];
+    const m1 = idoc.createComment('s'), m2 = idoc.createComment('e'); first.before(m1); last.after(m2);
+    lines.forEach(l => { if (l.block) (/^(UL|OL)$/.test(l.block.tagName) ? unwrapList(l.block) : unwrapEl(l.block)); });
+    const list = []; for (let n = m1.nextSibling; n && n !== m2; n = n.nextSibling) list.push(n);
+    list.forEach(n => { if (n.nodeType !== 1) return; [...n.querySelectorAll(STRIP)].reverse().forEach(unwrapInline); if (n.matches(STRIP)) unwrapInline(n); });
+    m1.remove(); m2.remove();
+    c.sel.removeAllRanges();
+  });
+}
+const FMT = { u: () => fmtInline('u'), s: () => fmtInline('s'), spoiler: () => fmtInline('spoiler'), mention: () => fmtInline('mention'), ch: () => fmtInline('ch'),
+  link: fmtLink, ul: () => fmtList(false), ol: () => fmtList(true), clear: fmtClear, h1: () => fmtBlock('h1'), h2: () => fmtBlock('h2'), h3: () => fmtBlock('h3'), qt: () => fmtBlock('qt'), sub: fmtSub, qtb: fmtQuoteBlock, code: fmtCode, pre: fmtPre };
+
+/* ---------- 復原（結構性操作；文字請在輸入框內用 Ctrl+Z） ---------- */
+function pushUndo(fn){ undoStack.push(fn); dirty = true; renderToc(); refreshUI(); }
+function undo(){ const fn = undoStack.pop(); if (fn){ fn(); dirty = true; renderToc(); refreshUI(); } }
+
+/* ---------- 目錄 ---------- */
+const plainText = u => { const c = u.cloneNode(true); c.querySelectorAll('.ed-handle,.ed-tools').forEach(n => n.remove()); return c.textContent.trim(); };
+const chapters = () => idoc ? [...idoc.querySelectorAll(F.wrap + ' > [data-toc]')] : [];
+function defaultTitle(u){
+  if (u.matches(F.div)) return plainText(u);
+  const nm = (u.querySelector(F.nm) || {}).textContent || '';
+  const tx = ((u.querySelector('.tx') || {}).textContent || '').replace(/\s+/g, ' ').trim().slice(0, 20);
+  return (nm.trim() ? nm.trim() + '｜' : '') + tx;
+}
+function setChapter(u, title, focus){
+  if (title === null){ u.removeAttribute('data-toc'); u.removeAttribute('data-toc-lv'); } else u.setAttribute('data-toc', title);
+  const sp = u.querySelector(':scope > .ed-tools > .ed-toc');
+  if (sp){ const on = title !== null; sp.classList.toggle('on', on); sp.textContent = on ? '★ 移出目錄' : '☰ 目錄'; }
+  dirty = true;
+  if (title !== null && focus) $('#tocPanel').classList.add('open');
+  renderToc(focus ? u : null); refreshUI();
+}
+function jumpTo(u){
+  u.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  u.classList.remove('ed-flash'); void u.offsetWidth; u.classList.add('ed-flash');
+  setTimeout(() => u.classList.remove('ed-flash'), 1500);
+}
+function renderToc(focusUnit){
+  const chs = chapters();
+  $('#btnToc').textContent = `☰ 目錄 (${chs.length})`;
+  const list = $('#tocList'); list.innerHTML = '';
+  if (!chs.length){
+    list.innerHTML = '<div class="tempty">還沒有章節。<br>滑鼠移到任一則訊息或日期分隔線，按「☰ 目錄」就會加進來；或按上方「加入所有日期分隔線」。<br>目錄的順序跟對話順序一致，要調整順序就拖曳對應的訊息。章節前的 ◀ ▶ 可以調整縮排層級。</div>';
+    return;
+  }
+  chs.forEach((u, i) => {
+    const row = document.createElement('div'); row.className = 'titem';
+    const lv = +u.getAttribute('data-toc-lv') || 0;
+    row.style.marginLeft = lv * 16 + 'px';
+    const mkb = (t, tip, d) => { const b = document.createElement('button'); b.textContent = t; b.title = tip;
+      b.onclick = () => { const v = Math.max(0, Math.min(2, lv + d)); if (v) u.setAttribute('data-toc-lv', v); else u.removeAttribute('data-toc-lv'); dirty = true; renderToc(); refreshUI(); }; return b; };
+    const n = document.createElement('span'); n.className = 'n'; n.style.width = 'auto'; n.append(mkb('◀', '提高一層（靠左）', -1), mkb('▶', '降低一層（縮排）', 1));
+    n.firstChild.disabled = lv === 0; n.lastChild.disabled = lv === 2;
+    const inp = document.createElement('input'); inp.value = u.getAttribute('data-toc');
+    inp.addEventListener('input', () => { u.setAttribute('data-toc', inp.value); dirty = true; refreshUI(); });
+    inp.addEventListener('focus', () => jumpTo(u));
+    const go = document.createElement('button'); go.textContent = '前往'; go.onclick = () => jumpTo(u);
+    const del = document.createElement('button'); del.textContent = '✕'; del.title = '移出目錄（不會刪除訊息）'; del.onclick = () => setChapter(u, null);
+    row.append(n, inp, go, del); list.appendChild(row);
+    if (u === focusUnit) setTimeout(() => { inp.focus(); inp.select(); }, 0);
+  });
+}
+function addAllDates(){
+  if (!idoc) return;
+  idoc.querySelectorAll(`${F.wrap} > ${F.div}:not([data-toc])`).forEach(d => setChapter(d, plainText(d)));
+}
+function clearToc(){
+  if (!chapters().length) return;
+  if (confirm('要把目錄清空嗎？（訊息本身不會被刪除）')) chapters().forEach(u => setChapter(u, null));
+}
+
+/* ---------- 頭像 ---------- */
+async function fileToAvatar(file){
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image(); img.src = url; await img.decode();
+    const S = 160, c = document.createElement('canvas'); c.width = c.height = S;
+    const w = img.naturalWidth, h = img.naturalHeight, m = Math.min(w, h);
+    c.getContext('2d').drawImage(img, (w - m) / 2, (h - m) / 2, m, m, 0, 0, S, S);
+    let u = c.toDataURL('image/webp', .88);
+    if (!u.startsWith('data:image/webp')) u = c.toDataURL('image/jpeg', .9);
+    return u;
+  } finally { URL.revokeObjectURL(url); }
+}
+const avChild = u => u.querySelector(each(F.av, a => ':scope > ' + a));
+function makeAvatar(url){
+  if (F.name === 'new'){
+    const d = idoc.createElement('div');
+    d.className = 'avatar ' + avatarClassFor(url); d.setAttribute('aria-hidden', 'true');
+    return d;
+  }
+  const n = idoc.createElement('img'); n.className = 'av'; n.alt = ''; n.src = url; return n;
+}
+function applyAvatar(units, url){
+  const swaps = [];
+  units.forEach(u => {
+    const old = avChild(u), n = makeAvatar(url);
+    if (old){ old.replaceWith(n); swaps.push([old, n]); } else { u.prepend(n); swaps.push([null, n]); }
+  });
+  if (F.name === 'new') syncAvatarStyle();
+  pushUndo(() => swaps.forEach(([o, n]) => o ? n.replaceWith(o) : n.remove()));
+}
+function showAvatarDialog(url){
+  const unit = pendingAv; if (!unit) return;
+  const name = ((unit.querySelector(F.nm) || {}).textContent || '').trim();
+  const same = name ? [...idoc.querySelectorAll(`${F.wrap} > ${F.msg}`)].filter(m => ((m.querySelector(F.nm) || {}).textContent || '').trim() === name) : [unit];
+  $('#avPrev').src = url;
+  $('#avWho').textContent = name ? `角色：${name}` : '';
+  const all = $('#avAll');
+  all.textContent = `換掉「${name}」全部 ${same.length} 則的頭像`;
+  all.style.display = same.length > 1 ? '' : 'none';
+  all.onclick = () => { applyAvatar(same, url); closeOv('ovAv'); };
+  $('#avOne').onclick = () => { applyAvatar([unit], url); closeOv('ovAv'); };
+  $('#avCancel').onclick = () => closeOv('ovAv');
+  openOv('ovAv');
+}
+const openOv = id => $('#' + id).classList.add('open');
+const closeOv = id => $('#' + id).classList.remove('open');
+
+/* ---------- 底色 ---------- */
+function setTheme(t){
+  if (!idoc) return;
+  theme = t;
+  const st = idoc.getElementById('theme-style');
+  if (st) st.textContent = themeCSS(t);
+  dirty = true; syncThemeButtons(); refreshUI();
+}
+function syncThemeButtons(){
+  $('#thDark').classList.toggle('on', theme === 'dark');
+  $('#thLight').classList.toggle('on', theme === 'light');
+}
+function setMode(edit){
+  if (!idoc) return;
+  editing = edit; applyEditable(); syncModeButtons();
+}
+function syncModeButtons(){
+  $('#mEdit').classList.toggle('on', editing);
+  $('#mView').classList.toggle('on', !editing);
+}
+
+/* ---------- 匯出前整理（新版格式：作者資料、頭像資料） ---------- */
+function finalizeNew(root){
+  const msgs = [...root.querySelectorAll(`${F.wrap} > ${F.msg}`)];
+  // data-author 跟著改過的名字走
+  msgs.forEach(m => { const nm = (m.querySelector(F.nm) || {}).textContent; if (nm && nm.trim()) m.setAttribute('data-author', nm.trim()); });
+
+  // 頭像資料：只保留還在用的
+  const used = new Set();
+  root.querySelectorAll('.avatar').forEach(a => a.classList.forEach(c => { if (/^avatar-image-\d+$/.test(c)) used.add(c); }));
+  const as = root.querySelector('#avatar-assets');
+  if (as && [...used].every(c => avatars.has(c))) as.textContent = '\n' + avatarRules(used) + '\n  ';
+}
+
+// 右下角「表示切替」按鈕 + 頻道選擇視窗
+function buildChannelUI(root){
+  const entries = [...root.querySelectorAll(`${F.wrap} [data-channel]`)];
+  const chans = new Map();
+  channelLabels.forEach((label, id) => chans.set(id, { label, n: 0 }));
+  entries.forEach(e => {
+    const id = e.getAttribute('data-channel'); let c = chans.get(id);
+    if (!c){ const sc = e.querySelector('.source-channel'); c = { label: sc ? sc.textContent.trim() : id, n: 0 }; chans.set(id, c); }
+    c.n++;
+  });
+  const list = [...chans].filter(([, c]) => c.n);
+  if (!list.length) return false;
+  const d = idoc, body = root.querySelector('body');
+  const mk = (tag, attrs = {}, text) => { const el = d.createElement(tag); Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v)); if (text !== undefined) el.textContent = text; return el; };
+
+  const fab = mk('div', { id: 'ch-fab' }); fab.appendChild(mk('button', { type: 'button', id: 'ch-btn' }, exOpts.chBtn));
+  const pop = mk('div', { id: 'ch-pop', hidden: '', role: 'dialog' });
+  const hd = mk('div', { class: 'ch-hd' });
+  hd.append(mk('span', {}, exOpts.chTitle), mk('button', { type: 'button', id: 'ch-x', class: 'ch-x', 'aria-label': 'close' }, '×'));
+  const box = mk('div', { class: 'ch-list' });
+  list.forEach(([id, c]) => {
+    const lb = mk('label'), inp = mk('input', { type: 'checkbox', 'data-channel': id, checked: '' });
+    lb.append(inp, mk('span', {}, `${c.label}（${c.n}）`)); box.appendChild(lb);
+  });
+  pop.append(hd, box);
+  const empty = mk('p', { id: 'filter-empty', hidden: '' }, '目前沒有可顯示的訊息，請選擇其他頻道。');
+  const wrap = root.querySelector(F.wrap);
+  if (wrap) wrap.before(empty); else body.appendChild(empty);
+  body.append(fab, pop);
+  return true;
+}
+
+/* ---------- 匯出 ---------- */
+function openExport(){
+  if (!idoc) return;
+  if (exOpts.theme === null) exOpts.theme = theme;
+  const n = chapters().length;
+  $('#exTocN').textContent = n;
+  $('#exToc').disabled = !n; $('#exToc').checked = n > 0 && exOpts.toc;
+  $('#exTocLbl').classList.toggle('dis', !n);
+  $('#exBot').checked = exOpts.bot;
+  $('#exChan').checked = exOpts.chan; $('#exChanLbl').style.display = F.name === 'new' ? '' : 'none';
+  $('#exChOpts').style.display = F.name === 'new' ? 'flex' : 'none';
+  $('#exCh').checked = exOpts.chfab; $('#exChBtn').value = exOpts.chBtn; $('#exChTitle').value = exOpts.chTitle;
+  $('#exViewer').checked = exOpts.viewer;
+  $('#exMarker').value = exOpts.marker; $('#exTocTitle').value = exOpts.tocTitle;
+  $('#exPageTitle').value = pageTitle;
+  syncExTheme(); openOv('ovExport');
+}
+function syncExTheme(){
+  $('#exDark').classList.toggle('on', exOpts.theme === 'dark');
+  $('#exLight').classList.toggle('on', exOpts.theme === 'light');
+}
+function doExport(){
+  exOpts.bot = $('#exBot').checked; exOpts.toc = $('#exToc').checked; exOpts.viewer = $('#exViewer').checked; exOpts.chan = $('#exChan').checked;
+  exOpts.chfab = $('#exCh').checked; exOpts.chBtn = $('#exChBtn').value.trim() || '表示切替'; exOpts.chTitle = $('#exChTitle').value.trim() || 'チャット種類一覧';
+  exOpts.marker = $('#exMarker').value; exOpts.tocTitle = $('#exTocTitle').value.trim() || '目錄';
+  const withToc = exOpts.toc && !$('#exToc').disabled;
+  pageTitle = $('#exPageTitle').value.trim() || pageTitle;
+  closeOv('ovExport');
+  if (idoc.activeElement && idoc.activeElement.blur) idoc.activeElement.blur();
+
+  const root = idoc.documentElement.cloneNode(true);
+  root.querySelectorAll('.ed-handle,.ed-tools,#ed-style').forEach(n => n.remove());
+  root.querySelectorAll('.custom-divider').forEach(el => {
+    if (!el.textContent.trim()){ el.textContent = ''; el.classList.add('cd-empty'); } else el.classList.remove('cd-empty');
+  });
+  if (pageTitle){
+    let tt = root.querySelector('title');
+    if (!tt){ tt = idoc.createElement('title'); root.querySelector('head').prepend(tt); }
+    tt.textContent = pageTitle;
+  }
+  root.querySelectorAll('[contenteditable]').forEach(n => n.removeAttribute('contenteditable'));
+  root.removeAttribute('data-ed'); root.removeAttribute('class');
+  root.querySelectorAll('[class]').forEach(n => {
+    const c = [...n.classList].filter(x => !x.startsWith('ed-'));
+    if (c.length) n.className = c.join(' '); else n.removeAttribute('class');
+  });
+  let hasCh = false;
+  if (F.name === 'new'){ finalizeNew(root); if (exOpts.chfab) hasCh = buildChannelUI(root); }
+  root.querySelectorAll('pre code').forEach(cd => { const t = cd.lastChild; if (t && t.nodeType === 3 && t.nodeValue.endsWith('\n')) t.nodeValue = t.nodeValue.slice(0, -1); });
+  if (!exOpts.bot) root.querySelectorAll(F.bt).forEach(n => n.remove());
+  if (F.name === 'new' && !exOpts.chan) root.querySelectorAll('.source-channel').forEach(n => n.remove());
+
+  const hdrEl = idoc.querySelector(F.hdr);
+  const hdrH = Math.max(72, Math.round(hdrEl ? hdrEl.getBoundingClientRect().height : 60) + 12);
+  let st = root.querySelector('#theme-style');
+  if (!st){ st = idoc.createElement('style'); st.id = 'theme-style'; root.querySelector('head').appendChild(st); }
+  const vOff = hasCh ? 72 : 16, tOff = vOff + (exOpts.viewer ? 48 : 0);
+  const darkAll = baseCSS + (hasCh ? '\n' + CHFAB_CSS : '') + (withToc ? '\n' + tocCss(F.pos, hdrH, tOff) : '') + (exOpts.viewer ? '\n' + vbarCss(F.pos, vOff) : '');
+  if (exOpts.viewer){
+    st.textContent = darkAll;
+    const ls = idoc.createElement('style'); ls.id = 'theme-light';
+    ls.setAttribute('media', exOpts.theme === 'light' ? 'all' : 'not all');
+    ls.textContent = remap(darkAll, MAP);
+    st.after(ls);
+  } else {
+    st.textContent = withTheme(darkAll, exOpts.theme);
+  }
+  if (origStyleId) st.id = origStyleId;
+
+  let tocEl = null, vbarEl = null;
+  const chs = [...root.querySelectorAll(F.wrap + ' > [data-toc]')];
+  chs.forEach((u, i) => { if (!u.id) u.id = 'ch-' + (i + 1); });
+  if (withToc && chs.length){
+    const d = idoc.createElement('details'); d.className = 'toc';
+    const sm = idoc.createElement('summary'); sm.textContent = exOpts.tocTitle; d.appendChild(sm);
+    const ol = idoc.createElement('ul');
+    if (exOpts.marker !== 'none') ol.className = 'm-' + exOpts.marker;
+    chs.forEach(u => {
+      const li = idoc.createElement('li'), a = idoc.createElement('a');
+      const lv = +u.getAttribute('data-toc-lv') || 0; if (lv) li.className = 'lv' + lv;
+      a.href = '#' + u.id; a.textContent = u.getAttribute('data-toc') || '（未命名）';
+      li.appendChild(a); ol.appendChild(li);
+    });
+    d.appendChild(ol);
+    if (F.pos === 'topbar') tocEl = d;
+    else { const hdr = root.querySelector(F.hdr); if (hdr) hdr.after(d); else root.querySelector('body').prepend(d); }
+  }
+
+  if (exOpts.viewer){
+    const vb = idoc.createElement('div'); vb.className = 'vbar';
+    const b = idoc.createElement('button'); b.id = 'theme-btn'; b.type = 'button';
+    b.textContent = exOpts.theme === 'light' ? '🌙 夜間模式' : '☀ 日間模式';
+    vb.appendChild(b);
+    if (F.pos === 'topbar') vbarEl = vb; else root.querySelector('body').prepend(vb);
+  }
+  if (F.pos === 'topbar' && (tocEl || vbarEl)){
+    const tb = idoc.createElement('div'); tb.className = 'topbar';
+    if (vbarEl) tb.appendChild(vbarEl);
+    if (tocEl) tb.appendChild(tocEl);
+    root.querySelector('body').prepend(tb);
+  }
+  root.querySelector('body').insertAdjacentHTML('beforeend', '\n' + savedScripts.join('\n') + '\n' +
+    (root.querySelector('.spoiler') ? '<script id="spoiler-script">' + SPOILER_JS + '<\/script>\n' : '') +
+    (hasCh ? '<script id="channel-script">' + CHANNEL_JS + '<\/script>\n' : '') +
+    (exOpts.viewer ? '<script id="theme-script">' + VIEWER_JS + '<\/script>\n' : ''));
+  const out = '<!DOCTYPE html>' + root.outerHTML;
+  const blob = new Blob([out], { type: 'text/html;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName.replace(/(_edited)?\.html?$/i, '') + '_edited.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  dirty = false; refreshUI();
+}
+
+/* ---------- UI ---------- */
+function setStatus(s){ $('#status').textContent = s; }
+function refreshUI(){
+  $('#btnUndo').disabled = !undoStack.length;
+  $('#btnExport').disabled = !idoc;
+  $('#btnAdd').disabled = !idoc; $('#btnSort').disabled = !idoc; $('#btnAddMsg').disabled = !idoc; $('#btnAddDiv').disabled = !idoc;
+  if (idoc){
+    const n = idoc.querySelectorAll(`${F.wrap} > ${F.msg}`).length;
+    setStatus(`${n} 則對話${dirty ? '　· 尚未匯出' : ''}${note ? '　· ' + note : ''}`);
+  }
+}
+
+$('#btnOpen').onclick = () => $('#file').click();
+$('#file').onchange = e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) startImport(f, 'replace'); };
+$('#btnAdd').onclick = () => $('#fileAdd').click();
+$('#fileAdd').onchange = e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) startImport(f, 'add'); };
+$('#btnSort').onclick = sortNow;
+$('#btnAddMsg').onclick = () => addMessage(null);
+$('#btnAddDiv').onclick = () => addDivider(null);
+$('#selClear').onclick = selClear;
+$('#selDel').onclick = selDelete;
+['btnAddMsg', 'btnAddDiv', 'selClear', 'selDel'].forEach(id => $('#' + id).addEventListener('mousedown', e => e.preventDefault()));
+$('#thDark').onclick = () => setTheme('dark');
+$('#thLight').onclick = () => setTheme('light');
+$('#mEdit').onclick = () => setMode(true);
+$('#mView').onclick = () => setMode(false);
+$('#btnUndo').onclick = undo;
+$('#btnExport').onclick = openExport;
+$('#exGo').onclick = doExport;
+$('#exCancel').onclick = () => closeOv('ovExport');
+$('#exDark').onclick = () => { exOpts.theme = 'dark'; syncExTheme(); };
+$('#exLight').onclick = () => { exOpts.theme = 'light'; syncExTheme(); };
+$('#btnToc').onclick = () => $('#tocPanel').classList.toggle('open');
+$('#tocClose').onclick = () => $('#tocPanel').classList.remove('open');
+$('#tocDates').onclick = addAllDates;
+$('#tocClear').onclick = clearToc;
+$('#avFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f || !pendingAv) return;
+  try { showAvatarDialog(await fileToAvatar(f)); } catch (err){ alert('這張圖片無法讀取，請換一張試試。'); }
+};
+document.querySelectorAll('.ov').forEach(o => o.addEventListener('mousedown', e => { if (e.target === o) o.classList.remove('open'); }));
+// 按工具列按鈕時不搶走文字選取
+document.querySelectorAll('#btnB,#btnI,[data-f]').forEach(b => b.addEventListener('mousedown', e => e.preventDefault()));
+document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { if (!idoc) return hint('請先開啟檔案'); if (!editing) return hint('預覽模式下無法編輯，請切回「編輯」'); FMT[b.dataset.f](); });
+$('#btnB').onclick = () => fmt('bold');
+$('#btnI').onclick = () => fmt('italic');
+
+const empty = $('#empty');
+window.addEventListener('dragover', e => { e.preventDefault(); empty.classList.add('over'); });
+window.addEventListener('dragleave', () => empty.classList.remove('over'));
+window.addEventListener('drop', e => {
+  e.preventDefault(); empty.classList.remove('over');
+  if (e.dataTransfer.files.length) startImport(e.dataTransfer.files, null);
+});
+window.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's'){ e.preventDefault(); openExport(); }
+});
+window.addEventListener('beforeunload', e => { if (dirty){ e.preventDefault(); e.returnValue = ''; } });
+</script>
+</body>
+</html>
