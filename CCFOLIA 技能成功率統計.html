@@ -59,6 +59,23 @@
   .bar i { display: block; height: 100%; background: var(--ok); }
   .low .bar i { background: var(--ng); }
   .dim { color: var(--muted); }
+  .grp { display: inline-flex; gap: 6px; align-items: center; }
+  .grp[hidden] { display: none; }
+  .chip { display: inline-block; padding: 0 10px; line-height: 20px; border-radius: 999px;
+    border: 1px solid rgba(128,128,128,.35); }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .tg { position: relative; flex: none; width: 60px; height: 30px; padding: 0; border-radius: 15px;
+    border: 2px solid #c2c3c4; background: #e5e7eb; cursor: pointer; transition: background .2s, border-color .2s; }
+  .tg .knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.25); display: flex; align-items: center; justify-content: center; transition: transform .2s; }
+  .tg svg { width: 14px; height: 14px; }
+  .tg .moon { display: none; }
+  :root[data-theme="dark"] .tg { background: #333336; border-color: #9c9da1; }
+  :root[data-theme="dark"] .tg .knob { transform: translateX(30px); }
+  :root[data-theme="dark"] .tg .sun { display: none; }
+  :root[data-theme="dark"] .tg .moon { display: block; }
+  .tg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button:disabled { opacity: .6; cursor: default; }
   #msg { color: var(--ng); margin: 10px 0; }
   #tsv { width: 100%; height: 140px; margin-top: 10px; font: 12px/1.4 ui-monospace, monospace;
     background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
@@ -67,8 +84,18 @@
 </head>
 <body>
 <main>
-  <h1>CCFOLIA 技能成功率統計</h1>
-  <p class="sub">把 CCFOLIA 匯出的聊天紀錄（HTML）丟進來，立刻看到每個技能的成功率。</p>
+  <div class="top">
+    <div>
+      <h1>CCFOLIA 技能成功率統計</h1>
+      <p class="sub">把 CCFOLIA 匯出的聊天紀錄（HTML）丟進來，立刻看到每個技能的成功率。</p>
+    </div>
+    <button id="theme" class="tg" role="switch" aria-checked="false" aria-label="切換白天／夜晚模式" title="切換白天／夜晚模式">
+      <span class="knob">
+        <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="#f59e0b"/><g stroke="#f59e0b" stroke-width="2" stroke-linecap="round"><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></g></svg>
+        <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z" fill="#1c2547"/></svg>
+      </span>
+    </button>
+  </div>
 
   <div id="drop"><b>點擊選擇檔案</b>，或把 HTML 紀錄拖到這裡</div>
   <input type="file" id="file" accept=".html,.htm" hidden>
@@ -86,6 +113,14 @@
         </select>
       </label>
       <button id="copy">複製成表格</button>
+      <span id="imgTools" class="grp">
+        <select id="fmt" aria-label="圖片格式">
+          <option value="png">PNG</option>
+          <option value="jpg">JPG</option>
+        </select>
+        <label><input type="checkbox" id="anon"> 匿名</label>
+        <button id="saveImg">存成圖片</button>
+      </span>
     </div>
     <div class="cards" id="cards"></div>
     <div class="scroll">
@@ -112,6 +147,22 @@ const CMD_RE = /^\s*CCB?\s*(?:\(\s*[-+]?\d+\s*\)|[-+]?\d+)?\s*<=\s*\d+\s*([\s\S]
 
 let entries = [], rows = [], sortKey = "total", sortDesc = true;
 const $ = (id) => document.getElementById(id);
+
+function applyTheme(t) {
+  document.documentElement.setAttribute("data-theme", t);
+  $("theme").setAttribute("aria-checked", String(t === "dark"));
+}
+(function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem("ccfolia-theme"); } catch (e) {}
+  const prefersDark = !!(window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+  applyTheme(saved === "dark" || saved === "light" ? saved : prefersDark ? "dark" : "light");
+  $("theme").addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    applyTheme(next);
+    try { localStorage.setItem("ccfolia-theme", next); } catch (e) {}
+  });
+})();
 
 function tierOf(cls, result) {
   const last = result.split("＞").pop().trim();
@@ -140,7 +191,9 @@ function parseNew(doc) {
     if (!/d100/i.test(result)) return;
     const tier = tierOf(roll.className, result);
     if (!tier) return;
-    const name = (a.querySelector(".speaker")?.textContent || "").trim();
+    const speakerEl = a.querySelector(".speaker");
+    const name = (speakerEl?.textContent || "").trim();
+    noteColor(name, (speakerEl?.getAttribute("style") || "").match(/--speaker-color:\s*([^;"]+)/i)?.[1]);
     const text = (a.querySelector(".message-text")?.textContent || "").trim();
     const m = text.match(CMD_RE);
     let skill = "(未標技能名)";
@@ -159,6 +212,7 @@ function parseOld(doc) {
     if (spans.length < 3) return;
     p.querySelectorAll("br").forEach((br) => br.replaceWith(" "));
     const name = spans[1].textContent.trim();
+    noteColor(name, (p.getAttribute("style") || "").match(/(?:^|;)\s*color:\s*([^;"]+)/i)?.[1]);
     const body = spans.slice(2).map((s) => s.textContent).join(" ").replace(/\s+/g, " ").trim();
     const idx = body.search(/\(\s*\d*d100/i);
     if (idx < 0) return;
@@ -178,6 +232,7 @@ function parseOld(doc) {
 let lastFormat = "";
 function parse(htmlText) {
   const doc = new DOMParser().parseFromString(htmlText, "text/html");
+  colorMap.clear();
   const a = parseNew(doc), b = parseOld(doc);
   lastFormat = [a.length ? "新版格式" : "", b.length ? "舊版格式" : ""].filter(Boolean).join(" + ");
   return a.concat(b);
@@ -206,7 +261,7 @@ function compute() {
   const map = new Map();
   for (const e of list) {
     const key = e.name + "\u0000" + e.skill;
-    if (!map.has(key)) map.set(key, { name: e.name, skill: e.skill, total: 0, ok: 0, ng: 0, ...Object.fromEntries(TIERS.map((t) => [t, 0])) });
+    if (!map.has(key)) map.set(key, { name: e.name, skill: e.skill, color: colorMap.get(e.name) || null, total: 0, ok: 0, ng: 0, ...Object.fromEntries(TIERS.map((t) => [t, 0])) });
     const r = map.get(key);
     r.total++; r[e.tier]++;
     if (OK_TIERS.includes(e.tier)) r.ok++; else r.ng++;
@@ -231,6 +286,7 @@ function render(list) {
   const ok = list.filter((e) => OK_TIERS.includes(e.tier)).length;
   const crit = list.filter((e) => e.tier === "大成功").length;
   const fumble = list.filter((e) => e.tier === "大失敗").length;
+  lastSummary = { total, rate: total ? (ok / total * 100).toFixed(1) + "%" : "–", crit, fumble };
   $("cards").replaceChildren(
     card(total, "技能判定次數"),
     card(total ? (ok / total * 100).toFixed(1) + "%" : "–", "整體成功率"),
@@ -254,6 +310,7 @@ function render(list) {
     [r.name, r.skill, r.total, r.ok, r.ng, r["大成功"], r["極限成功"], r["困難成功"], r["一般成功"], r["大失敗"]].forEach((v, i) => {
       const td = document.createElement("td");
       td.textContent = v;
+      if (i === 0) td.replaceChildren(nameChip(v, r.color));
       if (i >= 5 && v === 0) td.className = "dim";
       tr.appendChild(td);
     });
@@ -270,6 +327,187 @@ function render(list) {
   }
   $("tbody").replaceChildren(frag);
 }
+
+// ==== IMAGE EXPORT ====
+const FONT = 'system-ui, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif';
+
+// 角色顏色：CCFOLIA 匯出檔裡每個角色都有自己設定的顏色
+const colorMap = new Map();
+function validColor(c) { return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(c || "").trim()); }
+function noteColor(name, c) {
+  c = String(c || "").trim();
+  if (validColor(c) && !colorMap.has(name)) colorMap.set(name, c);
+}
+function inkFor(hex) {                       // 依底色挑黑字或白字（取對比較高者）
+  let h = hex.trim().slice(1);
+  if (h.length === 3) h = h.split("").map((x) => x + x).join("");
+  const lin = [0, 2, 4].map((i) => {
+    const v = parseInt(h.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  const L = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  return (L + 0.05) / 0.05 > 1.05 / (L + 0.05) ? "#111111" : "#ffffff";
+}
+function nameChip(name, color) {
+  const el = document.createElement("span");
+  el.textContent = name;
+  if (validColor(color)) {
+    el.className = "chip";
+    el.style.background = color;
+    el.style.color = inkFor(color);
+  }
+  return el;
+}
+function pillPath(ctx, x, y, w, h) {
+  const r = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
+  ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2);
+  ctx.lineTo(x + r, y + h);
+  ctx.arc(x + r, y + r, r, Math.PI / 2, Math.PI * 1.5);
+  ctx.closePath();
+}
+
+function drawStatsImage(canvas, rows, info, c) {
+  const head = ["角色", "技能", "次數", "成功", "失敗", "大成功", "極限", "困難", "一般", "大失敗", "成功率"];
+  const body = rows.map((r) => [r.name, r.skill, r.total, r.ok, r.ng, r["大成功"], r["極限成功"], r["困難成功"], r["一般成功"], r["大失敗"]]);
+  const pad = 24, rowH = 32, cp = 12, barW = 70, rateW = 52;
+  let ctx = canvas.getContext("2d");
+
+  const widths = head.slice(0, 10).map((h, i) => {
+    ctx.font = `600 14px ${FONT}`;
+    let w = ctx.measureText(h).width;
+    ctx.font = `14px ${FONT}`;
+    for (const row of body) w = Math.max(w, ctx.measureText(String(row[i])).width);
+    return Math.ceil(w) + cp * 2 + (i === 0 && rows.some((r) => validColor(r.color)) ? 20 : 0);
+  });
+  widths.push(cp * 2 + barW + 8 + rateW);
+  const tableW = widths.reduce((a, b) => a + b, 0);
+  const W = Math.max(tableW + pad * 2, 560);
+  const y0 = pad + 66;
+  const H = y0 + rowH * (body.length + 1) + pad;
+
+  const s = Math.min(2, Math.sqrt(14e6 / (W * H)));
+  canvas.width = Math.round(W * s);
+  canvas.height = Math.round(H * s);
+  ctx = canvas.getContext("2d");
+  ctx.scale(s, s);
+  ctx.textBaseline = "middle";
+
+  ctx.fillStyle = c.bg; ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = "left";
+  ctx.fillStyle = c.text; ctx.font = `600 20px ${FONT}`;
+  ctx.fillText("CCFOLIA 技能成功率統計", pad, pad + 12);
+  ctx.fillStyle = c.muted; ctx.font = `13px ${FONT}`;
+  ctx.fillText(info.filter, pad, pad + 38);
+  ctx.fillText(info.summary, pad, pad + 58);
+
+  const x0 = pad;
+  ctx.fillStyle = c.surface; ctx.fillRect(x0, y0, tableW, rowH * (body.length + 1));
+  ctx.fillStyle = c.head; ctx.fillRect(x0, y0, tableW, rowH);
+
+  const drawRow = (cells, y, isHead, rate, color) => {
+    let x = x0;
+    cells.forEach((v, i) => {
+      const left = i < 2;
+      ctx.textAlign = left ? "left" : "right";
+      ctx.font = `${isHead ? "600 " : ""}14px ${FONT}`;
+      if (i === 0 && !isHead && validColor(color)) {
+        const tw = ctx.measureText(String(v)).width, ph = 22;
+        pillPath(ctx, x + cp, y + (rowH - ph) / 2, tw + 20, ph);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.strokeStyle = "rgba(128,128,128,0.45)"; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = inkFor(color);
+        ctx.fillText(String(v), x + cp + 10, y + rowH / 2);
+        x += widths[i];
+        return;
+      }
+      ctx.fillStyle = !isHead && i >= 5 && v === 0 ? c.muted : c.text;
+      ctx.fillText(String(v), left ? x + cp : x + widths[i] - cp, y + rowH / 2);
+      x += widths[i];
+    });
+    // 成功率欄
+    const rx = x0 + tableW - cp;
+    ctx.textAlign = "right";
+    ctx.font = `${isHead ? "600 " : ""}14px ${FONT}`;
+    if (isHead) {
+      ctx.fillStyle = c.text; ctx.fillText("成功率", rx, y + rowH / 2);
+    } else {
+      ctx.fillStyle = c.text; ctx.fillText(rate + "%", rx, y + rowH / 2);
+      const bx = rx - rateW - 8 - barW;
+      ctx.fillStyle = c.line; ctx.fillRect(bx, y + rowH / 2 - 4, barW, 8);
+      ctx.fillStyle = rate < 40 ? c.ng : c.ok; ctx.fillRect(bx, y + rowH / 2 - 4, barW * rate / 100, 8);
+    }
+    ctx.fillStyle = c.line; ctx.fillRect(x0, y + rowH - 1, tableW, 1);
+  };
+
+  drawRow(head.slice(0, 10), y0, true);
+  body.forEach((row, i) => drawRow(row, y0 + rowH * (i + 1), false, rows[i].rate, rows[i].color));
+  ctx.strokeStyle = c.line; ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, tableW - 1, rowH * (body.length + 1) - 1);
+}
+// ==== END IMAGE EXPORT ====
+
+let lastSummary = { total: 0, rate: "–", crit: 0, fumble: 0 };
+let downloadsNs = null;
+
+function themeColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const g = (n) => cs.getPropertyValue(n).trim();
+  return { bg: g("--bg"), surface: g("--surface"), text: g("--text"), muted: g("--muted"),
+           line: g("--line"), ok: g("--ok"), ng: g("--ng"), head: g("--head") };
+}
+
+// 角色名依字母順序對應成 角色A、角色B…（不論目前篩選哪個角色，對應都固定）
+function anonMap() {
+  const names = [...new Set(entries.map((e) => e.name))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+  const m = new Map();
+  names.forEach((n, i) => m.set(n, "角色" + (i < 26 ? String.fromCharCode(65 + i) : i + 1)));
+  return m;
+}
+
+async function saveImage() {
+  const btn = $("saveImg");
+  if (!rows.length) return;
+  const fmt = $("fmt").value;
+  btn.disabled = true;
+  try {
+    const sel = $("char");
+    const anon = $("anon").checked;
+    const mp = anon ? anonMap() : null;
+    const who = sel.value ? "角色：" + (anon ? mp.get(sel.value) : sel.value) : "角色：全部";
+    const min = +$("min").value;
+    const info = {
+      filter: who + (min > 1 ? "　（僅顯示判定 " + min + " 次以上的技能）" : ""),
+      summary: "判定 " + lastSummary.total + " 次　整體成功率 " + lastSummary.rate +
+               "　大成功 " + lastSummary.crit + "　大失敗 " + lastSummary.fumble,
+    };
+    const canvas = document.createElement("canvas");
+    drawStatsImage(canvas, anon ? rows.map((r) => ({ ...r, name: mp.get(r.name) })) : rows, info, themeColors());
+    const blob = await new Promise((res) => canvas.toBlob(res, fmt === "jpg" ? "image/jpeg" : "image/png", 0.92));
+    if (!blob) throw { code: "bad_request", message: "無法產生圖片" };
+    const suffix = sel.value && !anon ? "-" + sel.value.replace(/[\\\/:*?"<>|\s]+/g, "") : "";
+    const filename = "ccfolia-skill-stats" + suffix + "." + fmt;
+    if (downloadsNs) {
+      await downloadsNs.save({ filename, data: blob });      // claude.ai 上發布的頁面
+    } else {                                                 // 本機開啟：一般瀏覽器下載
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+    showMsg("");
+  } catch (e) {
+    if (!e || e.code !== "declined") showMsg("無法儲存圖片（" + ((e && (e.code || e.message)) || "未知錯誤") + "）。");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+(async () => {
+  try { downloadsNs = (await window.claude?.use?.("downloads")) || null; } catch (e) { downloadsNs = null; }
+})();
 
 function showMsg(t) { $("msg").textContent = t; $("msg").hidden = !t; }
 
@@ -317,6 +555,7 @@ $("file").addEventListener("change", (e) => loadFile(e.target.files[0]));
 $("drop").addEventListener("drop", (e) => loadFile(e.dataTransfer.files[0]));
 ["char", "merge", "min"].forEach((id) => $(id).addEventListener("change", compute));
 $("copy").addEventListener("click", copyTable);
+$("saveImg").addEventListener("click", saveImage);
 document.querySelectorAll("th").forEach((th) => th.addEventListener("click", () => {
   const k = th.dataset.k;
   sortDesc = sortKey === k ? !sortDesc : true;
