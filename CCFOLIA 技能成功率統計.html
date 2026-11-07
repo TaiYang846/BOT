@@ -61,8 +61,6 @@
   .dim { color: var(--muted); }
   .grp { display: inline-flex; gap: 6px; align-items: center; }
   .grp[hidden] { display: none; }
-  .chip { display: inline-block; padding: 0 10px; line-height: 20px; border-radius: 999px;
-    border: 1px solid rgba(128,128,128,.35); }
   .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
   .tg { position: relative; flex: none; width: 60px; height: 30px; padding: 0; border-radius: 15px;
     border: 2px solid #c2c3c4; background: #e5e7eb; cursor: pointer; transition: background .2s, border-color .2s; }
@@ -118,7 +116,7 @@
           <option value="png">PNG</option>
           <option value="jpg">JPG</option>
         </select>
-        <label><input type="checkbox" id="anon"> 匿名</label>
+        <label title="角色名改成隨機 emoji"><input type="checkbox" id="anon"> 匿名</label>
         <button id="saveImg">存成圖片</button>
       </span>
     </div>
@@ -191,9 +189,7 @@ function parseNew(doc) {
     if (!/d100/i.test(result)) return;
     const tier = tierOf(roll.className, result);
     if (!tier) return;
-    const speakerEl = a.querySelector(".speaker");
-    const name = (speakerEl?.textContent || "").trim();
-    noteColor(name, (speakerEl?.getAttribute("style") || "").match(/--speaker-color:\s*([^;"]+)/i)?.[1]);
+    const name = (a.querySelector(".speaker")?.textContent || "").trim();
     const text = (a.querySelector(".message-text")?.textContent || "").trim();
     const m = text.match(CMD_RE);
     let skill = "(未標技能名)";
@@ -212,7 +208,6 @@ function parseOld(doc) {
     if (spans.length < 3) return;
     p.querySelectorAll("br").forEach((br) => br.replaceWith(" "));
     const name = spans[1].textContent.trim();
-    noteColor(name, (p.getAttribute("style") || "").match(/(?:^|;)\s*color:\s*([^;"]+)/i)?.[1]);
     const body = spans.slice(2).map((s) => s.textContent).join(" ").replace(/\s+/g, " ").trim();
     const idx = body.search(/\(\s*\d*d100/i);
     if (idx < 0) return;
@@ -232,7 +227,6 @@ function parseOld(doc) {
 let lastFormat = "";
 function parse(htmlText) {
   const doc = new DOMParser().parseFromString(htmlText, "text/html");
-  colorMap.clear();
   const a = parseNew(doc), b = parseOld(doc);
   lastFormat = [a.length ? "新版格式" : "", b.length ? "舊版格式" : ""].filter(Boolean).join(" + ");
   return a.concat(b);
@@ -261,7 +255,7 @@ function compute() {
   const map = new Map();
   for (const e of list) {
     const key = e.name + "\u0000" + e.skill;
-    if (!map.has(key)) map.set(key, { name: e.name, skill: e.skill, color: colorMap.get(e.name) || null, total: 0, ok: 0, ng: 0, ...Object.fromEntries(TIERS.map((t) => [t, 0])) });
+    if (!map.has(key)) map.set(key, { name: e.name, skill: e.skill, total: 0, ok: 0, ng: 0, ...Object.fromEntries(TIERS.map((t) => [t, 0])) });
     const r = map.get(key);
     r.total++; r[e.tier]++;
     if (OK_TIERS.includes(e.tier)) r.ok++; else r.ng++;
@@ -310,7 +304,6 @@ function render(list) {
     [r.name, r.skill, r.total, r.ok, r.ng, r["大成功"], r["極限成功"], r["困難成功"], r["一般成功"], r["大失敗"]].forEach((v, i) => {
       const td = document.createElement("td");
       td.textContent = v;
-      if (i === 0) td.replaceChildren(nameChip(v, r.color));
       if (i >= 5 && v === 0) td.className = "dim";
       tr.appendChild(td);
     });
@@ -331,42 +324,7 @@ function render(list) {
 // ==== IMAGE EXPORT ====
 const FONT = 'system-ui, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif';
 
-// 角色顏色：CCFOLIA 匯出檔裡每個角色都有自己設定的顏色
-const colorMap = new Map();
-function validColor(c) { return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(c || "").trim()); }
-function noteColor(name, c) {
-  c = String(c || "").trim();
-  if (validColor(c) && !colorMap.has(name)) colorMap.set(name, c);
-}
-function inkFor(hex) {                       // 依底色挑黑字或白字（取對比較高者）
-  let h = hex.trim().slice(1);
-  if (h.length === 3) h = h.split("").map((x) => x + x).join("");
-  const lin = [0, 2, 4].map((i) => {
-    const v = parseInt(h.slice(i, i + 2), 16) / 255;
-    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-  });
-  const L = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
-  return (L + 0.05) / 0.05 > 1.05 / (L + 0.05) ? "#111111" : "#ffffff";
-}
-function nameChip(name, color) {
-  const el = document.createElement("span");
-  el.textContent = name;
-  if (validColor(color)) {
-    el.className = "chip";
-    el.style.background = color;
-    el.style.color = inkFor(color);
-  }
-  return el;
-}
-function pillPath(ctx, x, y, w, h) {
-  const r = h / 2;
-  ctx.beginPath();
-  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
-  ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2);
-  ctx.lineTo(x + r, y + h);
-  ctx.arc(x + r, y + r, r, Math.PI / 2, Math.PI * 1.5);
-  ctx.closePath();
-}
+function isEmoji(v) { return /\p{Extended_Pictographic}/u.test(String(v)); }
 
 function drawStatsImage(canvas, rows, info, c) {
   const head = ["角色", "技能", "次數", "成功", "失敗", "大成功", "極限", "困難", "一般", "大失敗", "成功率"];
@@ -378,8 +336,11 @@ function drawStatsImage(canvas, rows, info, c) {
     ctx.font = `600 14px ${FONT}`;
     let w = ctx.measureText(h).width;
     ctx.font = `14px ${FONT}`;
-    for (const row of body) w = Math.max(w, ctx.measureText(String(row[i])).width);
-    return Math.ceil(w) + cp * 2 + (i === 0 && rows.some((r) => validColor(r.color)) ? 20 : 0);
+    for (const row of body) {
+      ctx.font = (i === 0 && isEmoji(row[i]) ? "18px " : "14px ") + FONT;
+      w = Math.max(w, ctx.measureText(String(row[i])).width);
+    }
+    return Math.ceil(w) + cp * 2;
   });
   widths.push(cp * 2 + barW + 8 + rateW);
   const tableW = widths.reduce((a, b) => a + b, 0);
@@ -406,19 +367,16 @@ function drawStatsImage(canvas, rows, info, c) {
   ctx.fillStyle = c.surface; ctx.fillRect(x0, y0, tableW, rowH * (body.length + 1));
   ctx.fillStyle = c.head; ctx.fillRect(x0, y0, tableW, rowH);
 
-  const drawRow = (cells, y, isHead, rate, color) => {
+  const drawRow = (cells, y, isHead, rate) => {
     let x = x0;
     cells.forEach((v, i) => {
       const left = i < 2;
       ctx.textAlign = left ? "left" : "right";
       ctx.font = `${isHead ? "600 " : ""}14px ${FONT}`;
-      if (i === 0 && !isHead && validColor(color)) {
-        const tw = ctx.measureText(String(v)).width, ph = 22;
-        pillPath(ctx, x + cp, y + (rowH - ph) / 2, tw + 20, ph);
-        ctx.fillStyle = color; ctx.fill();
-        ctx.strokeStyle = "rgba(128,128,128,0.45)"; ctx.lineWidth = 1; ctx.stroke();
-        ctx.fillStyle = inkFor(color);
-        ctx.fillText(String(v), x + cp + 10, y + rowH / 2);
+      if (i === 0 && !isHead && isEmoji(v)) {
+        ctx.font = `18px ${FONT}`;
+        ctx.fillStyle = c.text;
+        ctx.fillText(String(v), x + cp, y + rowH / 2 + 1);
         x += widths[i];
         return;
       }
@@ -442,7 +400,7 @@ function drawStatsImage(canvas, rows, info, c) {
   };
 
   drawRow(head.slice(0, 10), y0, true);
-  body.forEach((row, i) => drawRow(row, y0 + rowH * (i + 1), false, rows[i].rate, rows[i].color));
+  body.forEach((row, i) => drawRow(row, y0 + rowH * (i + 1), false, rows[i].rate));
   ctx.strokeStyle = c.line; ctx.lineWidth = 1;
   ctx.strokeRect(x0 + 0.5, y0 + 0.5, tableW - 1, rowH * (body.length + 1) - 1);
 }
@@ -458,11 +416,18 @@ function themeColors() {
            line: g("--line"), ok: g("--ok"), ng: g("--ng"), head: g("--head") };
 }
 
-// 角色名依字母順序對應成 角色A、角色B…（不論目前篩選哪個角色，對應都固定）
+// 匿名：每個角色隨機配一個 emoji。每次存圖都重新抽，所以不同張圖之間無法互相對照。
+const ANON_EMOJI = ["🦊", "🐱", "🐶", "🐼", "🐸", "🐧", "🦉", "🐙", "🦄", "🐢", "🦋", "🐝", "🍎", "🍋", "🍇", "🍑",
+  "🍄", "🌵", "🌻", "⭐", "🌙", "🔥", "🍀", "🎲", "🎸", "🥁", "🎹", "🚀", "🧁", "🍩"];
 function anonMap() {
-  const names = [...new Set(entries.map((e) => e.name))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+  const names = [...new Set(entries.map((e) => e.name))];
+  const pool = ANON_EMOJI.slice();
+  for (let i = pool.length - 1; i > 0; i--) {              // Fisher–Yates 洗牌
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
   const m = new Map();
-  names.forEach((n, i) => m.set(n, "角色" + (i < 26 ? String.fromCharCode(65 + i) : i + 1)));
+  names.forEach((n, i) => m.set(n, pool[i] || "❓" + (i + 1)));
   return m;
 }
 
