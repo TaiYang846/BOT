@@ -61,6 +61,7 @@
   .dim { color: var(--muted); }
   .grp { display: inline-flex; gap: 6px; align-items: center; }
   .grp[hidden] { display: none; }
+  .rulenote { color: var(--muted); font-size: 12px; margin: -4px 0 12px; }
   .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
   .tg { position: relative; flex: none; width: 60px; height: 30px; padding: 0; border-radius: 15px;
     border: 2px solid #c2c3c4; background: #e5e7eb; cursor: pointer; transition: background .2s, border-color .2s; }
@@ -110,6 +111,14 @@
           <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option>
         </select>
       </label>
+      <label>判定規則
+        <select id="rule">
+          <option value="auto">自動（依骰值）</option>
+          <option value="7">CoC 7版（依骰值）</option>
+          <option value="6">CoC 6版（依骰值）</option>
+          <option value="label">依結果文字</option>
+        </select>
+      </label>
       <button id="copy">複製成表格</button>
       <span id="imgTools" class="grp">
         <select id="fmt" aria-label="圖片格式">
@@ -120,13 +129,14 @@
         <button id="saveImg">存成圖片</button>
       </span>
     </div>
+    <div id="ruleNote" class="rulenote"></div>
     <div class="cards" id="cards"></div>
     <div class="scroll">
       <table>
         <thead><tr>
           <th data-k="name">角色</th><th data-k="skill">技能</th><th data-k="total">次數</th>
           <th data-k="ok">成功</th><th data-k="ng">失敗</th>
-          <th data-k="大成功">大成功</th><th data-k="極限成功">極限</th><th data-k="困難成功">困難</th>
+          <th data-k="大成功">大成功</th><th data-k="極限成功">極限/特殊</th><th data-k="困難成功">困難</th>
           <th data-k="一般成功">一般</th><th data-k="大失敗">大失敗</th><th data-k="rate">成功率</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
@@ -162,15 +172,61 @@ function applyTheme(t) {
   });
 })();
 
-function tierOf(cls, result) {
+// 依「結果文字」判斷（備援；文字改名時盡量多認幾種說法）
+function tierByLabel(cls, result) {
   const last = result.split("＞").pop().trim();
-  if (cls.includes("critical") || last.includes("大成功")) return "大成功";
-  if (cls.includes("fumble") || last.includes("大失敗")) return "大失敗";
-  if (last.includes("極限")) return "極限成功";
-  if (last.includes("困難")) return "困難成功";
-  if (cls.includes("failure") || last.endsWith("失敗")) return "失敗";
-  if (cls.includes("success") || last.includes("成功")) return "一般成功";
+  if (cls.includes("critical") || /大成功|決定|クリティカル|critical/i.test(last)) return "大成功";
+  if (cls.includes("fumble") || /大失敗|致命|ファンブル|fumble/i.test(last)) return "大失敗";
+  if (/極限|特殊|スペシャル|special|extreme/i.test(last)) return "極限成功";
+  if (/困難|ハード|hard/i.test(last)) return "困難成功";
+  if (cls.includes("failure") || /失敗|failure/i.test(last)) return "失敗";
+  if (cls.includes("success") || /成功|success/i.test(last)) return "一般成功";
   return null;
+}
+
+// 從 "(1D100<=75) 獎勵・懲罰骰[0] ＞ 41 ＞ 41 ＞ 通常成功" 取出目標值與最終骰值
+// bonus：七版會在 (1D100<=N) 後面多一段獎勵／懲罰骰文字，六版沒有（不依賴文字內容，只看有沒有）
+function parseRoll(result) {
+  const m = result.match(/^\(\s*\d*d100\s*<=\s*(\d+)\s*\)([\s\S]*)$/i);
+  if (!m) return null;
+  const parts = m[2].split("＞").map((x) => x.trim());
+  if (parts.length < 3) return null;
+  const R = parseInt(parts[parts.length - 2], 10);
+  if (!Number.isFinite(R)) return null;
+  return { T: +m[1], R, bonus: parts[0] !== "" };
+}
+
+// 依骰值判斷：不受結果文字改名影響
+function tierByNumbers(T, R, ed) {
+  if (ed === 7) {
+    if (R <= T) return R === 1 ? "大成功" : R <= Math.floor(T / 5) ? "極限成功" : R <= Math.floor(T / 2) ? "困難成功" : "一般成功";
+    return R === 100 || (T < 50 && R >= 96) ? "大失敗" : "失敗";
+  }
+  // 六版：1/5 以內為「特殊」（對應七版的極限成功）
+  if (R <= T) return R <= 5 ? "大成功" : R <= Math.floor(T / 5) ? "極限成功" : "一般成功";
+  return R >= 96 ? "大失敗" : "失敗";
+}
+
+function judgeTier(e) {
+  const mode = $("rule").value;               // auto | 7 | 6 | label
+  const n = parseRoll(e.result);
+  e.byLabel = tierByLabel(e.cls, e.result);
+  if (!n || (mode === "label" && e.byLabel)) { e.how = "label"; return e.byLabel; }   // 沒有數字可算（如對抗骰）時看文字
+  const ed = mode === "6" ? 6 : mode === "7" ? 7 : n.bonus ? 7 : 6;
+  e.how = String(ed);
+  return tierByNumbers(n.T, n.R, ed);
+}
+
+// 欄位依偵測到的版本決定：六版→「特殊」且沒有困難欄；七版→「極限」且有困難欄；兩者都有→全部顯示
+let colCfg = { hard: true, extreme: "極限" };
+function tierCols() {
+  return [
+    { k: "大成功", h: "大成功" },
+    { k: "極限成功", h: colCfg.extreme },
+    ...(colCfg.hard ? [{ k: "困難成功", h: "困難" }] : []),
+    { k: "一般成功", h: "一般" },
+    { k: "大失敗", h: "大失敗" },
+  ];
 }
 
 function cleanSkill(s) {
@@ -187,15 +243,15 @@ function parseNew(doc) {
     if (!roll) return;
     const result = roll.textContent.trim();
     if (!/d100/i.test(result)) return;
-    const tier = tierOf(roll.className, result);
-    if (!tier) return;
+    const cls = roll.className;
+    if (!parseRoll(result) && !tierByLabel(cls, result)) return;
     const name = (a.querySelector(".speaker")?.textContent || "").trim();
     const text = (a.querySelector(".message-text")?.textContent || "").trim();
     const m = text.match(CMD_RE);
     let skill = "(未標技能名)";
     if (m) skill = cleanSkill(m[1]) || skill;
     else if (/^CBR/i.test(text)) skill = "(對抗 CBR)";
-    out.push({ name, skill, tier });
+    out.push({ name, skill, cls, result });
   });
   return out;
 }
@@ -213,13 +269,12 @@ function parseOld(doc) {
     if (idx < 0) return;
     const text = body.slice(0, idx).trim();
     const result = body.slice(idx);
-    const tier = tierOf("", result);
-    if (!tier) return;
+    if (!parseRoll(result) && !tierByLabel("", result)) return;
     const m = text.match(CMD_RE);
     let skill = "(未標技能名)";
     if (m) skill = cleanSkill(m[1]) || skill;
     else if (/^CBR/i.test(text)) skill = "(對抗 CBR)";
-    out.push({ name, skill, tier });
+    out.push({ name, skill, cls: "", result });
   });
   return out;
 }
@@ -247,7 +302,26 @@ function mergeMap(list) {
 
 function compute() {
   const only = $("char").value;
-  let list = entries.filter((e) => !only || e.name === only);
+  const how = { 6: 0, 7: 0, label: 0 };
+  let mismatch = 0;
+  entries.forEach((e) => {
+    e.tier = judgeTier(e);
+    if (e.tier) how[e.how]++;
+    if (e.tier && e.byLabel && e.tier !== e.byLabel) mismatch++;
+  });
+  const parts = [];
+  if (how[7]) parts.push("七版 " + how[7] + " 筆");
+  if (how[6]) parts.push("六版 " + how[6] + " 筆");
+  if (how.label) parts.push("依結果文字 " + how.label + " 筆" + ($("rule").value === "label" ? "" : "（沒有骰值可算，例如對抗骰）"));
+  let note = parts.length ? "判定方式：" + parts.join("、") + "。" : "";
+  if (mismatch && $("rule").value !== "label") note += mismatch + " 筆的結果文字與骰值算出的不同，已以骰值為準（房規不同的話可改選「依結果文字」）。";
+  $("ruleNote").textContent = note;
+  const has7 = how[7] > 0, has6 = how[6] > 0;
+  colCfg = {
+    hard: has7 || entries.some((e) => e.tier === "困難成功"),
+    extreme: has6 && !has7 ? "特殊" : has7 && !has6 ? "極限" : "極限/特殊",
+  };
+  let list = entries.filter((e) => e.tier && (!only || e.name === only));
   if ($("merge").checked) {
     const mp = mergeMap(list);
     list = list.map((e) => ({ ...e, skill: mp.get(e.skill) }));
@@ -288,11 +362,14 @@ function render(list) {
     card(fumble, "大失敗")
   );
 
+  if (!colCfg.hard && sortKey === "困難成功") sortKey = "total";
   rows.sort((a, b) => {
     const x = a[sortKey], y = b[sortKey];
     const c = typeof x === "string" ? x.localeCompare(y, "zh-Hant") : x - y;
     return sortDesc ? -c : c;
   });
+  document.querySelector('th[data-k="極限成功"]').textContent = colCfg.extreme;
+  document.querySelector('th[data-k="困難成功"]').hidden = !colCfg.hard;
   document.querySelectorAll("th").forEach((th) => {
     th.classList.toggle("sorted", th.dataset.k === sortKey);
     th.classList.toggle("asc", th.dataset.k === sortKey && !sortDesc);
@@ -301,7 +378,7 @@ function render(list) {
   const frag = document.createDocumentFragment();
   for (const r of rows) {
     const tr = document.createElement("tr");
-    [r.name, r.skill, r.total, r.ok, r.ng, r["大成功"], r["極限成功"], r["困難成功"], r["一般成功"], r["大失敗"]].forEach((v, i) => {
+    [r.name, r.skill, r.total, r.ok, r.ng, ...tierCols().map((t) => r[t.k])].forEach((v, i) => {
       const td = document.createElement("td");
       td.textContent = v;
       if (i >= 5 && v === 0) td.className = "dim";
@@ -327,12 +404,14 @@ const FONT = 'system-ui, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sa
 function isEmoji(v) { return /\p{Extended_Pictographic}/u.test(String(v)); }
 
 function drawStatsImage(canvas, rows, info, c) {
-  const head = ["角色", "技能", "次數", "成功", "失敗", "大成功", "極限", "困難", "一般", "大失敗", "成功率"];
-  const body = rows.map((r) => [r.name, r.skill, r.total, r.ok, r.ng, r["大成功"], r["極限成功"], r["困難成功"], r["一般成功"], r["大失敗"]]);
+  const cols = info.cols || [{ k: "大成功", h: "大成功" }, { k: "極限成功", h: "極限" }, { k: "困難成功", h: "困難" }, { k: "一般成功", h: "一般" }, { k: "大失敗", h: "大失敗" }];
+  const head = ["角色", "技能", "次數", "成功", "失敗", ...cols.map((t) => t.h), "成功率"];
+  const body = rows.map((r) => [r.name, r.skill, r.total, r.ok, r.ng, ...cols.map((t) => r[t.k])]);
+  const nHead = head.length - 1;
   const pad = 24, rowH = 32, cp = 12, barW = 70, rateW = 52;
   let ctx = canvas.getContext("2d");
 
-  const widths = head.slice(0, 10).map((h, i) => {
+  const widths = head.slice(0, nHead).map((h, i) => {
     ctx.font = `600 14px ${FONT}`;
     let w = ctx.measureText(h).width;
     ctx.font = `14px ${FONT}`;
@@ -399,7 +478,7 @@ function drawStatsImage(canvas, rows, info, c) {
     ctx.fillStyle = c.line; ctx.fillRect(x0, y + rowH - 1, tableW, 1);
   };
 
-  drawRow(head.slice(0, 10), y0, true);
+  drawRow(head.slice(0, nHead), y0, true);
   body.forEach((row, i) => drawRow(row, y0 + rowH * (i + 1), false, rows[i].rate));
   ctx.strokeStyle = c.line; ctx.lineWidth = 1;
   ctx.strokeRect(x0 + 0.5, y0 + 0.5, tableW - 1, rowH * (body.length + 1) - 1);
@@ -446,6 +525,7 @@ async function saveImage() {
       filter: who + (min > 1 ? "　（僅顯示判定 " + min + " 次以上的技能）" : ""),
       summary: "判定 " + lastSummary.total + " 次　整體成功率 " + lastSummary.rate +
                "　大成功 " + lastSummary.crit + "　大失敗 " + lastSummary.fumble,
+      cols: tierCols(),
     };
     const canvas = document.createElement("canvas");
     drawStatsImage(canvas, anon ? rows.map((r) => ({ ...r, name: mp.get(r.name) })) : rows, info, themeColors());
@@ -499,8 +579,9 @@ function loadFile(file) {
 }
 
 async function copyTable() {
-  const head = ["角色", "技能", "次數", "成功", "失敗", "大成功", "極限成功", "困難成功", "一般成功", "大失敗", "成功率%"];
-  const text = [head, ...rows.map((r) => [r.name, r.skill, r.total, r.ok, r.ng, r["大成功"], r["極限成功"], r["困難成功"], r["一般成功"], r["大失敗"], r.rate])]
+  const cols = tierCols();
+  const head = ["角色", "技能", "次數", "成功", "失敗", ...cols.map((t) => t.h), "成功率%"];
+  const text = [head, ...rows.map((r) => [r.name, r.skill, r.total, r.ok, r.ng, ...cols.map((t) => r[t.k]), r.rate])]
     .map((l) => l.join("\t")).join("\n");
   try {
     await navigator.clipboard.writeText(text);
@@ -518,14 +599,14 @@ $("file").addEventListener("change", (e) => loadFile(e.target.files[0]));
 ["dragenter", "dragover"].forEach((ev) => $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.add("over"); }));
 ["dragleave", "drop"].forEach((ev) => $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.remove("over"); }));
 $("drop").addEventListener("drop", (e) => loadFile(e.dataTransfer.files[0]));
-["char", "merge", "min"].forEach((id) => $(id).addEventListener("change", compute));
+["char", "merge", "min", "rule"].forEach((id) => $(id).addEventListener("change", compute));
 $("copy").addEventListener("click", copyTable);
 $("saveImg").addEventListener("click", saveImage);
 document.querySelectorAll("th").forEach((th) => th.addEventListener("click", () => {
   const k = th.dataset.k;
   sortDesc = sortKey === k ? !sortDesc : true;
   sortKey = k;
-  render(entries.filter((e) => !$("char").value || e.name === $("char").value));
+  render(entries.filter((e) => e.tier && (!$("char").value || e.name === $("char").value)));
 }));
 </script>
 </body>
