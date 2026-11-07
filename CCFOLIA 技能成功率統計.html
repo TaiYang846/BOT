@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CCFOLIA 技能成功率統計</title>
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    color-scheme: light;
+    --bg: #f7f7f5; --surface: #ffffff; --text: #1f2328; --muted: #6b7280;
+    --line: #e5e7eb; --accent: #2563eb; --ok: #16a34a; --ng: #dc2626; --head: #f1f1ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #141414; --surface: #1d1d1d; --text: #e8e8e6; --muted: #9a9a96;
+      --line: #2e2e2e; --accent: #6ea0ff; --ok: #4ade80; --ng: #f87171; --head: #262626;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #141414; --surface: #1d1d1d; --text: #e8e8e6; --muted: #9a9a96;
+    --line: #2e2e2e; --accent: #6ea0ff; --ok: #4ade80; --ng: #f87171; --head: #262626;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  *, *::before, *::after { box-sizing: inherit; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.6 system-ui, -apple-system, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  #drop { background: var(--surface); border: 2px dashed var(--line); border-radius: 12px;
+    padding: 28px 16px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  #drop:hover, #drop.over { border-color: var(--accent); }
+  #drop b { color: var(--accent); }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 14px 0; }
+  .controls label { display: inline-flex; gap: 6px; align-items: center; }
+  select, button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 5px 10px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .card .n { font-size: 22px; font-weight: 600; }
+  .card .l { color: var(--muted); font-size: 12px; }
+  .scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; }
+  th, td { padding: 6px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+  th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
+  th { background: var(--head); cursor: pointer; position: sticky; top: 0; user-select: none; font-weight: 600; }
+  th.sorted::after { content: " ▼"; font-size: 10px; color: var(--accent); }
+  th.sorted.asc::after { content: " ▲"; }
+  tr:last-child td { border-bottom: 0; }
+  .rate { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .bar { width: 60px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--ok); }
+  .low .bar i { background: var(--ng); }
+  .dim { color: var(--muted); }
+  #msg { color: var(--ng); margin: 10px 0; }
+  #tsv { width: 100%; height: 140px; margin-top: 10px; font: 12px/1.4 ui-monospace, monospace;
+    background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>CCFOLIA 技能成功率統計</h1>
+  <p class="sub">把 CCFOLIA 匯出的聊天紀錄（HTML）丟進來，立刻看到每個技能的成功率。</p>
+
+  <div id="drop"><b>點擊選擇檔案</b>，或把 HTML 紀錄拖到這裡</div>
+  <input type="file" id="file" accept=".html,.htm" hidden>
+  <div id="msg" hidden></div>
+
+  <section id="result" hidden>
+    <div class="controls">
+      <label>角色
+        <select id="char"></select>
+      </label>
+      <label><input type="checkbox" id="merge" checked> 合併相似技能名</label>
+      <label>最少次數
+        <select id="min">
+          <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option>
+        </select>
+      </label>
+      <button id="copy">複製成表格</button>
+    </div>
+    <div class="cards" id="cards"></div>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th data-k="name">角色</th><th data-k="skill">技能</th><th data-k="total">次數</th>
+          <th data-k="ok">成功</th><th data-k="ng">失敗</th>
+          <th data-k="大成功">大成功</th><th data-k="極限成功">極限</th><th data-k="困難成功">困難</th>
+          <th data-k="一般成功">一般</th><th data-k="大失敗">大失敗</th><th data-k="rate">成功率</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <textarea id="tsv" hidden readonly></textarea>
+  </section>
+
+  <p class="note">檔案只在你的瀏覽器內處理，不會上傳到任何地方。目前支援 CoC 7 版的 d100 判定（CC&lt;=數值 技能名，含獎勵／懲罰骰）。</p>
+</main>
+
+<script>
+const TIERS = ["大成功", "極限成功", "困難成功", "一般成功", "失敗", "大失敗"];
+const OK_TIERS = TIERS.slice(0, 4);
+const CMD_RE = /^\s*CCB?\s*(?:\(\s*[-+]?\d+\s*\)|[-+]?\d+)?\s*<=\s*\d+\s*([\s\S]*)$/i;
+
+let entries = [], rows = [], sortKey = "total", sortDesc = true;
+const $ = (id) => document.getElementById(id);
+
+function tierOf(cls, result) {
+  const last = result.split("＞").pop().trim();
+  if (cls.includes("critical") || last.includes("大成功")) return "大成功";
+  if (cls.includes("fumble") || last.includes("大失敗")) return "大失敗";
+  if (last.includes("極限")) return "極限成功";
+  if (last.includes("困難")) return "困難成功";
+  if (cls.includes("failure") || last.endsWith("失敗")) return "失敗";
+  if (cls.includes("success") || last.includes("成功")) return "一般成功";
+  return null;
+}
+
+function cleanSkill(s) {
+  s = s.trim().replace(/^[【\[]+|[】\]]+$/g, "");
+  s = s.split(/[\s\u3000]+/)[0] || "";
+  return s.replace(/[?？!！。.…~～]+$/, "").replace(/[-+＋－]\d+$/, "");   // 去掉「聆聽-20」這類修正值
+}
+
+function parseNew(doc) {
+  const out = [];
+  doc.querySelectorAll("article.message").forEach((a) => {
+    if (a.classList.contains("system")) return;
+    const roll = a.querySelector(".roll-result");
+    if (!roll) return;
+    const result = roll.textContent.trim();
+    if (!/d100/i.test(result)) return;
+    const tier = tierOf(roll.className, result);
+    if (!tier) return;
+    const name = (a.querySelector(".speaker")?.textContent || "").trim();
+    const text = (a.querySelector(".message-text")?.textContent || "").trim();
+    const m = text.match(CMD_RE);
+    let skill = "(未標技能名)";
+    if (m) skill = cleanSkill(m[1]) || skill;
+    else if (/^CBR/i.test(text)) skill = "(對抗 CBR)";
+    out.push({ name, skill, tier });
+  });
+  return out;
+}
+
+// 舊版匯出：<p><span>[頻道]</span><span>角色</span> : <span>指令 (1D100<=75) … ＞ 結果</span></p>
+function parseOld(doc) {
+  const out = [];
+  doc.querySelectorAll("p").forEach((p) => {
+    const spans = [...p.children].filter((c) => c.tagName === "SPAN");
+    if (spans.length < 3) return;
+    p.querySelectorAll("br").forEach((br) => br.replaceWith(" "));
+    const name = spans[1].textContent.trim();
+    const body = spans.slice(2).map((s) => s.textContent).join(" ").replace(/\s+/g, " ").trim();
+    const idx = body.search(/\(\s*\d*d100/i);
+    if (idx < 0) return;
+    const text = body.slice(0, idx).trim();
+    const result = body.slice(idx);
+    const tier = tierOf("", result);
+    if (!tier) return;
+    const m = text.match(CMD_RE);
+    let skill = "(未標技能名)";
+    if (m) skill = cleanSkill(m[1]) || skill;
+    else if (/^CBR/i.test(text)) skill = "(對抗 CBR)";
+    out.push({ name, skill, tier });
+  });
+  return out;
+}
+
+let lastFormat = "";
+function parse(htmlText) {
+  const doc = new DOMParser().parseFromString(htmlText, "text/html");
+  const a = parseNew(doc), b = parseOld(doc);
+  lastFormat = [a.length ? "新版格式" : "", b.length ? "舊版格式" : ""].filter(Boolean).join(" + ");
+  return a.concat(b);
+}
+
+function mergeMap(list) {
+  const cnt = new Map();
+  list.forEach((e) => cnt.set(e.skill, (cnt.get(e.skill) || 0) + 1));
+  const base = [...cnt].filter(([k, v]) => v >= 3 && k.length >= 2 && !k.startsWith("(")).map(([k]) => k)
+    .sort((a, b) => b.length - a.length);
+  const map = new Map();
+  for (const k of cnt.keys()) {
+    const hit = base.includes(k) ? null : base.find((b) => k.startsWith(b));
+    map.set(k, hit || k);
+  }
+  return map;
+}
+
+function compute() {
+  const only = $("char").value;
+  let list = entries.filter((e) => !only || e.name === only);
+  if ($("merge").checked) {
+    const mp = mergeMap(list);
+    list = list.map((e) => ({ ...e, skill: mp.get(e.skill) }));
+  }
+  const map = new Map();
+  for (const e of list) {
+    const key = e.name + "\u0000" + e.skill;
+    if (!map.has(key)) map.set(key, { name: e.name, skill: e.skill, total: 0, ok: 0, ng: 0, ...Object.fromEntries(TIERS.map((t) => [t, 0])) });
+    const r = map.get(key);
+    r.total++; r[e.tier]++;
+    if (OK_TIERS.includes(e.tier)) r.ok++; else r.ng++;
+  }
+  const min = +$("min").value;
+  rows = [...map.values()].filter((r) => r.total >= min)
+    .map((r) => ({ ...r, rate: Math.round((r.ok / r.total) * 1000) / 10 }));
+  render(list);
+}
+
+function card(n, l) {
+  const d = document.createElement("div");
+  d.className = "card";
+  const a = document.createElement("div"); a.className = "n"; a.textContent = n;
+  const b = document.createElement("div"); b.className = "l"; b.textContent = l;
+  d.append(a, b);
+  return d;
+}
+
+function render(list) {
+  const total = list.length;
+  const ok = list.filter((e) => OK_TIERS.includes(e.tier)).length;
+  const crit = list.filter((e) => e.tier === "大成功").length;
+  const fumble = list.filter((e) => e.tier === "大失敗").length;
+  $("cards").replaceChildren(
+    card(total, "技能判定次數"),
+    card(total ? (ok / total * 100).toFixed(1) + "%" : "–", "整體成功率"),
+    card(crit, "大成功"),
+    card(fumble, "大失敗")
+  );
+
+  rows.sort((a, b) => {
+    const x = a[sortKey], y = b[sortKey];
+    const c = typeof x === "string" ? x.localeCompare(y, "zh-Hant") : x - y;
+    return sortDesc ? -c : c;
+  });
+  document.querySelectorAll("th").forEach((th) => {
+    th.classList.toggle("sorted", th.dataset.k === sortKey);
+    th.classList.toggle("asc", th.dataset.k === sortKey && !sortDesc);
+  });
+
+  const frag = document.createDocumentFragment();
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    [r.name, r.skill, r.total, r.ok, r.ng, r["大成功"], r["極限成功"], r["困難成功"], r["一般成功"], r["大失敗"]].forEach((v, i) => {
+      const td = document.createElement("td");
+      td.textContent = v;
+      if (i >= 5 && v === 0) td.className = "dim";
+      tr.appendChild(td);
+    });
+    const td = document.createElement("td");
+    const wrap = document.createElement("span");
+    wrap.className = "rate" + (r.rate < 40 ? " low" : "");
+    const bar = document.createElement("span"); bar.className = "bar";
+    const fill = document.createElement("i"); fill.style.width = r.rate + "%";
+    bar.appendChild(fill);
+    wrap.append(bar, document.createTextNode(r.rate + "%"));
+    td.appendChild(wrap);
+    tr.appendChild(td);
+    frag.appendChild(tr);
+  }
+  $("tbody").replaceChildren(frag);
+}
+
+function showMsg(t) { $("msg").textContent = t; $("msg").hidden = !t; }
+
+function loadFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    entries = parse(reader.result);
+    if (!entries.length) {
+      $("result").hidden = true;
+      showMsg("找不到技能判定。請確認這是 CCFOLIA 匯出的 HTML，且有使用 CC<=數值 這類 d100 指令。");
+      return;
+    }
+    showMsg("");
+    const names = [...new Set(entries.map((e) => e.name))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+    const sel = $("char");
+    sel.replaceChildren(new Option("全部", ""), ...names.map((n) => new Option(n || "(無名)", n)));
+    $("result").hidden = false;
+    $("drop").textContent = "已載入：" + file.name + "（偵測到" + lastFormat + "，點擊可更換）";
+    compute();
+  };
+  reader.onerror = () => showMsg("讀取檔案失敗。");
+  reader.readAsText(file, "utf-8");
+}
+
+async function copyTable() {
+  const head = ["角色", "技能", "次數", "成功", "失敗", "大成功", "極限成功", "困難成功", "一般成功", "大失敗", "成功率%"];
+  const text = [head, ...rows.map((r) => [r.name, r.skill, r.total, r.ok, r.ng, r["大成功"], r["極限成功"], r["困難成功"], r["一般成功"], r["大失敗"], r.rate])]
+    .map((l) => l.join("\t")).join("\n");
+  try {
+    await navigator.clipboard.writeText(text);
+    $("copy").textContent = "已複製，可貼到 Excel / Google 試算表";
+    setTimeout(() => ($("copy").textContent = "複製成表格"), 2500);
+  } catch (e) {
+    const ta = $("tsv");
+    ta.value = text; ta.hidden = false; ta.focus(); ta.select();
+    $("copy").textContent = "請手動複製下方文字";
+  }
+}
+
+$("drop").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", (e) => loadFile(e.target.files[0]));
+["dragenter", "dragover"].forEach((ev) => $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.remove("over"); }));
+$("drop").addEventListener("drop", (e) => loadFile(e.dataTransfer.files[0]));
+["char", "merge", "min"].forEach((id) => $(id).addEventListener("change", compute));
+$("copy").addEventListener("click", copyTable);
+document.querySelectorAll("th").forEach((th) => th.addEventListener("click", () => {
+  const k = th.dataset.k;
+  sortDesc = sortKey === k ? !sortDesc : true;
+  sortKey = k;
+  render(entries.filter((e) => !$("char").value || e.name === $("char").value));
+}));
+</script>
+</body>
+</html>
