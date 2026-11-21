@@ -61,6 +61,14 @@ button.pri:hover:not(:disabled){background:var(--acc2)}
 .improw:last-child{border-bottom:0}
 .improw small{display:block;color:var(--mute);font-size:12px}
 .improw.bad{color:#f0777a}
+.chhead{display:flex;gap:14px;align-items:center}
+.chthumb{width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0;background:#5865f2;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+.chrow .chthumb{width:30px;height:30px;font-size:13px}
+.chrow{display:flex;align-items:center;gap:10px;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--line);font-size:14px}
+.chrow:last-child{border-bottom:0}
+.chrow:hover{background:#2b2d34}
+.chrow.on{background:#2f3552}
+.chrow small{margin-left:auto;color:var(--mute)}
 .avprev{width:64px;height:64px;border-radius:50%;object-fit:cover;align-self:center}
 .fbar{padding:6px 14px;background:#1c1d21}
 .flabel{color:var(--mute);font-size:12px}
@@ -147,7 +155,7 @@ button.pri:hover:not(:disabled){background:var(--acc2)}
   <div class="grp"><button data-f="clear" title="清除所在這一行（或選取的幾行）的所有格式">清除格式</button></div>
   <span class="flabel" style="margin-left:auto">先點進訊息文字 → 按按鈕；再按一次可取消</span>
 </div>
-<div class="tip" id="tip">拖曳左側 ⠿ 移動　·　可一次開啟多個檔案合併　·　點頭像換圖　·　滑鼠移到訊息上有 目錄／複製／刪除　·　點文字直接修改，Enter 換行　·　Ctrl+S 匯出</div>
+<div class="tip" id="tip">拖曳左側 ⠿ 移動　·　可一次開啟多個檔案合併　·　點頭像可換圖片／名字／角色　·　滑鼠移到訊息上有 目錄／複製／刪除　·　點文字直接修改，Enter 換行　·　Ctrl+S 匯出</div>
 <div class="stage">
  <div class="view">
   <div id="empty">
@@ -209,15 +217,24 @@ button.pri:hover:not(:disabled){background:var(--acc2)}
   <div class="acts"><button id="exCancel">取消</button><button class="pri" id="exGo">匯出</button></div>
 </div></div>
 
-<div class="ov" id="ovAv"><div class="dlg">
-  <h3>更換頭像</h3>
-  <img class="avprev" id="avPrev" alt="">
-  <p id="avWho"></p>
-  <div class="acts" style="flex-direction:column;align-items:stretch">
-    <button class="pri" id="avAll"></button>
-    <button id="avOne">只換這一則</button>
-    <button id="avCancel">取消</button>
+<div class="ov" id="ovChar"><div class="dlg" style="width:min(480px,94vw)">
+  <h3>編輯角色</h3>
+  <div class="chhead">
+    <span id="chPrev"></span>
+    <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0">
+      <input id="chName" placeholder="角色名字" style="background:#17181c;border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:7px 9px;font:inherit">
+      <div class="grp"><button id="chPick">換頭像圖片…</button><small id="chPickInfo" style="color:var(--mute)"></small></div>
+    </div>
   </div>
+  <div id="chScope" style="display:none;flex-direction:column;gap:6px">
+    <label class="chk"><input type="radio" name="chscope" value="all" checked> <span id="chAllTxt"></span></label>
+    <label class="chk"><input type="radio" name="chscope" value="one"> 只改這一則</label>
+  </div>
+  <div>
+    <p style="margin:0 0 6px">或者直接改成檔案裡的其他角色（名字和頭像都會換過去）：</p>
+    <div id="chList" class="implist" style="max-height:200px"></div>
+  </div>
+  <div class="acts"><button id="chCancel">取消</button><button class="pri" id="chApply">套用</button></div>
 </div></div>
 
 <script>
@@ -697,7 +714,7 @@ function addTools(unit){
 
 function onToolClick(e){
   const av = editing && e.target.closest && e.target.closest(each(F.av, a => `${F.wrap} > ${F.msg} > ${a}`));
-  if (av){ pendingAv = av.parentNode; $('#avFile').click(); return; }
+  if (av){ pendingAv = av.parentNode; openCharDialog(pendingAv); return; }
   const el = e.target.closest && e.target.closest('.ed-dup,.ed-del,.ed-toc,.ed-pick,.ed-addm,.ed-addd');
   if (!el) return;
   const unit = el.closest(F.wrap + ' > *');
@@ -840,7 +857,7 @@ function addMessage(ref){
   lastUnit = n;
   pushUndo(() => n.remove());
   focusText(tx);
-  hint('已新增一則：角色和時間先沿用範本，可直接修改（點頭像可換圖）');
+  hint('已新增一則：角色和時間先沿用範本，可直接修改（點頭像可換名字、圖片或整個角色）');
 }
 function addDivider(ref){
   if (!idoc) return;
@@ -1250,19 +1267,88 @@ function applyAvatar(units, url){
   if (F.name === 'new') syncAvatarStyle();
   pushUndo(() => swaps.forEach(([o, n]) => o ? n.replaceWith(o) : n.remove()));
 }
-function showAvatarDialog(url){
-  const unit = pendingAv; if (!unit) return;
-  const name = ((unit.querySelector(F.nm) || {}).textContent || '').trim();
-  const same = name ? [...idoc.querySelectorAll(`${F.wrap} > ${F.msg}`)].filter(m => ((m.querySelector(F.nm) || {}).textContent || '').trim() === name) : [unit];
-  $('#avPrev').src = url;
-  $('#avWho').textContent = name ? `角色：${name}` : '';
-  const all = $('#avAll');
-  all.textContent = `換掉「${name}」全部 ${same.length} 則的頭像`;
-  all.style.display = same.length > 1 ? '' : 'none';
-  all.onclick = () => { applyAvatar(same, url); closeOv('ovAv'); };
-  $('#avOne').onclick = () => { applyAvatar([unit], url); closeOv('ovAv'); };
-  $('#avCancel').onclick = () => closeOv('ovAv');
-  openOv('ovAv');
+/* ---------- 角色：換名字、換頭像圖片、或直接換成檔案裡的其他角色 ---------- */
+const nameOf = u => ((u.querySelector(F.nm) || {}).textContent || '').trim();
+function avatarInfo(u){
+  const a = avChild(u); if (!a) return { url: null, letter: '?' };
+  const letter = (a.textContent || '').trim().slice(0, 1) || '?';
+  if (F.name === 'new'){
+    const c = [...a.classList].find(x => /^avatar-image-\d+$/.test(x));
+    return { url: c ? avatars.get(c) || null : null, letter };
+  }
+  return a.tagName === 'IMG' ? { url: a.getAttribute('src'), letter } : { url: null, letter };
+}
+function thumbEl(info){
+  if (info.url){ const i = document.createElement('img'); i.src = info.url; i.className = 'chthumb'; return i; }
+  const d = document.createElement('span'); d.className = 'chthumb'; d.textContent = info.letter; return d;
+}
+let chState = null;
+function showChPrev(info){ const box = $('#chPrev'); box.textContent = ''; box.appendChild(thumbEl(info)); }
+function openCharDialog(unit){
+  const name = nameOf(unit);
+  const msgs = [...idoc.querySelectorAll(`${F.wrap} > ${F.msg}`)];
+  const same = name ? msgs.filter(m => nameOf(m) === name) : [unit];
+  chState = { unit, name, same, avatarUrl: null, src: null };
+  showChPrev(avatarInfo(unit));
+  $('#chName').value = name; $('#chPickInfo').textContent = '';
+  $('#chScope').style.display = same.length > 1 ? 'flex' : 'none';
+  $('#chAllTxt').textContent = `「${name}」全部 ${same.length} 則一起改`;
+  document.querySelector('input[name=chscope][value=all]').checked = true;
+
+  const chars = new Map();
+  msgs.forEach(m => { const n = nameOf(m); if (!n) return; const c = chars.get(n); if (c) c.count++; else chars.set(n, { name: n, count: 1, unit: m }); });
+  const list = $('#chList'); list.textContent = '';
+  [...chars.values()].sort((a, b) => b.count - a.count).forEach(c => {
+    const row = document.createElement('div'); row.className = 'chrow';
+    const nm = document.createElement('span'); nm.textContent = c.name + (c.name === name ? '（目前）' : '');
+    const cnt = document.createElement('small'); cnt.textContent = c.count + ' 則';
+    row.append(thumbEl(avatarInfo(c.unit)), nm, cnt);
+    row.onclick = () => {
+      chState.src = c.unit; chState.avatarUrl = null;
+      list.querySelectorAll('.chrow.on').forEach(x => x.classList.remove('on')); row.classList.add('on');
+      $('#chName').value = c.name; $('#chPickInfo').textContent = '';
+      showChPrev(avatarInfo(c.unit));
+    };
+    list.appendChild(row);
+  });
+  openOv('ovChar');
+}
+function applyChar(){
+  const st = chState; if (!st) return;
+  const newName = $('#chName').value.trim();
+  const scope = (document.querySelector('input[name=chscope]:checked') || {}).value || 'all';
+  const targets = scope === 'all' && st.same.length > 1 ? st.same : [st.unit];
+  const renamed = !!newName && newName !== st.name;
+  if (!st.avatarUrl && !st.src && !renamed){ closeOv('ovChar'); return; }
+  const undos = [];
+  targets.forEach(u => {
+    // 頭像
+    let n = null;
+    if (st.src && st.src !== u){ const sa = avChild(st.src); if (sa) n = sa.cloneNode(true); }
+    else if (st.avatarUrl) n = makeAvatar(st.avatarUrl);
+    if (n){
+      const old = avChild(u);
+      if (old) old.replaceWith(n); else u.prepend(n);
+      undos.push(() => old ? n.replaceWith(old) : n.remove());
+    }
+    // 名字（連同 data-author）
+    const nm = u.querySelector(F.nm);
+    if (nm && (renamed || st.src)){
+      const oldText = nm.textContent, oldAuthor = u.getAttribute('data-author');
+      if (newName) nm.textContent = newName;
+      if (newName && u.hasAttribute('data-author')) u.setAttribute('data-author', newName);
+      undos.push(() => { nm.textContent = oldText; if (oldAuthor !== null) u.setAttribute('data-author', oldAuthor); });
+      // 換成其他角色時，BOT 標籤也跟著對方
+      if (st.src && st.src !== u){
+        const sb = st.src.querySelector(F.bt), cb = u.querySelector(F.bt);
+        if (sb && !cb){ const b = sb.cloneNode(true); nm.after(b); undos.push(() => b.remove()); }
+        else if (!sb && cb){ const holder = cb.parentNode, next = cb.nextSibling; cb.remove(); undos.push(() => holder.insertBefore(cb, next)); }
+      }
+    }
+  });
+  if (F.name === 'new') syncAvatarStyle();
+  pushUndo(() => undos.slice().reverse().forEach(f => f()));
+  closeOv('ovChar');
 }
 const openOv = id => $('#' + id).classList.add('open');
 const closeOv = id => $('#' + id).classList.remove('open');
@@ -1484,11 +1570,19 @@ $('#btnToc').onclick = () => $('#tocPanel').classList.toggle('open');
 $('#tocClose').onclick = () => $('#tocPanel').classList.remove('open');
 $('#tocDates').onclick = addAllDates;
 $('#tocClear').onclick = clearToc;
+$('#chPick').onclick = () => $('#avFile').click();
 $('#avFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
-  if (!f || !pendingAv) return;
-  try { showAvatarDialog(await fileToAvatar(f)); } catch (err){ alert('這張圖片無法讀取，請換一張試試。'); }
+  if (!f || !chState) return;
+  try {
+    const url = await fileToAvatar(f);
+    chState.avatarUrl = url; chState.src = null;
+    $('#chList').querySelectorAll('.chrow.on').forEach(x => x.classList.remove('on'));
+    showChPrev({ url, letter: '' }); $('#chPickInfo').textContent = '已選好新圖片';
+  } catch (err){ alert('這張圖片無法讀取，請換一張試試。'); }
 };
+$('#chApply').onclick = applyChar;
+$('#chCancel').onclick = () => closeOv('ovChar');
 document.querySelectorAll('.ov').forEach(o => o.addEventListener('mousedown', e => { if (e.target === o) o.classList.remove('open'); }));
 // 按工具列按鈕時不搶走文字選取
 document.querySelectorAll('#btnB,#btnI,[data-f]').forEach(b => b.addEventListener('mousedown', e => e.preventDefault()));
